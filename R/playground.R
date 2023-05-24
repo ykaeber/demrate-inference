@@ -14,11 +14,11 @@ ricker <- function(
     g=numeric(), R=numeric(), disturbance=numeric()
   )
   for (t in 2:num_generations) {
-    x1 = runif(1,0,1)
-    m = b0_m + b1_m*x1 + b2_m*N[t]
-    g = b0_g + b1_g*x1 + b2_g*N[t]
-    r = b0_r + b1_r*x1 + b2_r*N[t]
-    actualr = rpois(1, max(exp(r * (1 - N[t - 1] / K))-1, 0))
+    x1 = runif(1,0,10)
+    m = plogis(b0_m + b1_m*x1 + b2_m*N[t-1])
+    g = exp(b0_g + b1_g*x1 + b2_g*N[t-1])
+    r = exp(b0_r + b1_r*x1 + b2_r*N[t-1])
+    actualr = rpois(1, r)
     R = g
     disturbance = rbinom(1,1,1-distP)
     N[t - 1] = N[t - 1]*(1-m)
@@ -42,16 +42,16 @@ num_generations <- 500 # Number of generations to simulate
 
 
 sim_df <- ricker(K = 100, N0 = 10L, num_generations = 1000L, distP = 0.01,
-                 b0_m = 0.00, b1_m = 0, b2_m = 0,
-                 b0_g = .1,  b1_g = 0, b2_g = -.3,
-                 b0_r = 0.01,  b1_r = 0, b2_r = 0)
+                 b0_m = 0.001, b1_m = .001, b2_m = 0.01,
+                 b0_g = 0.001,  b1_g = .001, b2_g = -.0001,
+                 b0_r = 0,  b1_r = 0, b2_r = -.001)
 
 head(sim_df)
 sim_df$actualR <- c(NA, sim_df$N[-1]/sim_df$N[-length(sim_df$N)])
 
 
 par(mfrow =c(2,1),mar=c(4,4,0.5,0.5))
-plot(N~t, data = sim_df, type = "l", ylim = c(0, 120))
+plot(N~t, data = sim_df, type = "l", ylim = c(0, 160))
 abline(h = 100)
 abline(v = sim_df[sim_df$disturbance == 0,]$t, col = "orange", lty = 2)
 legend("bottomright",legend = c("disturbance"), 
