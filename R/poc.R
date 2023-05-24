@@ -42,7 +42,8 @@ plot(R~t, data = sim_df, type = "l", ylim = c(0,2))
 lines(m~t, data = sim_df, col = "red")
 lines(g~t, data = sim_df, col = "blue")
 lines(r~t, data = sim_df, col = "green")
-legend("topright",legend = c("mortality","growth","recruitment"), col = c("red","blue","green"), lty = 1)
+legend("topright",legend = c("mortality","growth","recruitment"), 
+       col = c("red","blue","green"), lty = 1)
 # Print the population sizes at each generation
 plot(NULL, NULL, xlim = c(0, 20), ylim = c(0, K+20))
 for (t in 1:num_generations) {
