@@ -2,7 +2,7 @@
 ricker <- function(
     K, N0, num_generations, distP=0.05, env=0, env_trend = 1,
     b0_m = 0.01, b1_m = 0, b2_m = 0,  
-    b1_g = 0, b2_g = 0,
+    b0_g = 0, b1_g = 0, b2_g = 0,
     b0_r = 0.2,  b1_r = 0, b2_r = 0  
     ) {
   N <- numeric(num_generations)  # Create a vector to store population sizes
@@ -15,11 +15,11 @@ ricker <- function(
   )
   for (t in 2:num_generations) {
     env = rnorm(1, env + env_trend*t, 0.1)
-    g = b1_g*env + b2_g * N[t-1]
+    g = b0_g + b1_g*env + b2_g * N[t-1]
     m = plogis(b0_m + b1_m*env + b2_m * N[t-1])
     r = b0_r * exp(b1_r*env + b2_r * N[t-1]/K)
     
-    G = 1 + exp(g * (1 - N[t - 1] / K))
+    G = exp(g * (1 - N[t - 1] / K))
     M = m * N[t-1]
     R = rpois(1, r)
     disturbance = rbinom(1,1,1-distP)
@@ -45,10 +45,10 @@ num_generations <- 500 # Number of generations to simulate
 
 
 
-sim_df <- ricker(K = 100, N0 = 100, num_generations = 1000L, distP = 0.01,
-                 b0_m = -4.5, b1_m = 0, b2_m = 0,
-                 b1_g = 0, b2_g = 0,
-                 b0_r = 0,  b1_r = 0, b2_r = 0)
+sim_df <- ricker(K = 100, N0 = 10, num_generations = 1000L, distP = 0.01,
+                 b0_m = -4.5, b1_m = 0, b2_m = 0.1,
+                 b0_g = 0.2, b1_g = 0, b2_g = 0,
+                 b0_r = 1,  b1_r = 0, b2_r = -1)
 
 head(sim_df,50)
 sim_df$actualR <- c(NA, sim_df$N[-1]/sim_df$N[-length(sim_df$N)])
@@ -65,7 +65,7 @@ plot(actualR~t, data = sim_df, type = "l", ylim = c(-0.3,3), lwd = 2)
 # abline(v = c(seq(0,nrow(sim_df), 100)), col = "grey50", lty = 2)
 abline(v = sim_df[sim_df$disturbance == 0,]$t, col = "orange", lty = 2)
 lines(m~t, data = sim_df, col = "red")
-lines(g~t, data = sim_df, col = "blue")
+lines(G~t, data = sim_df, col = "blue")
 lines(r~t, data = sim_df, col = "green")
 legend("topright",legend = c("actual rate of change","mortality","growth","recruitment"), 
        col = c("black","red","blue","green"), lty = 1, lwd = c(2,1,1,1), cex = 0.7)
