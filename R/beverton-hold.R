@@ -37,7 +37,7 @@ beverton_holt <- function(
     K_r = 10
     g_recr = plogis(b0_r + b1_recr*x1+b2_recr*N[i])*2
     recr_mean = (g_recr * recr) / (1 + (recr / K_r))
-    recr = recr_mean#rpois(1, recr_mean)  
+    recr = rpois(1, recr_mean)  
     
     N[i] = N[i] + recr
     
@@ -61,8 +61,8 @@ timesteps <- 50   # Number of time steps to simulate
 
 # Run the Beverton-Holt model simulation
 sim_df <- beverton_holt(N0 = 10, timesteps = 200, 
-  b0_e = 1, b1_e = -.03,
-  b0_k = 100, b1_k = 0.3, b1_g = 1.4, b0_r = 5, b1_recr = 0.0, b2_recr = -1.1, 
+  b0_e = 1, b1_e = .00,
+  b0_k = 100, b1_k = 0.3, b1_g = 1.4, b0_r = 5, b1_recr = 0.9, b2_recr = -0.1, 
   distP = 0.02
 )
 
