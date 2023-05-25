@@ -2,8 +2,6 @@
 
 inv.plogis <- binomial()$linkfun
 
-
-
 # Function to simulate Beverton-Holt model
 beverton_holt <- function(
     N0, timesteps, spinup = 0, sample_interval = 1,
@@ -69,8 +67,8 @@ beverton_holt <- function(
 
 # Run the Beverton-Holt model simulation
 sim_df <- beverton_holt(N0 = 10, timesteps = 500, 
-  b0_e = 10, b1_e = -0.001,
-  b0_k = 100, b1_k = 0.3, b1_g = 1.4, b0_r = 5, b1_recr = 0.9, b2_recr = -0.1, 
+  b0_e = 1, b1_e = 0.0,
+  b0_k = 100, b1_k = 4.9, b1_g = 1.4, b0_r = 30, b1_recr = 8.1, b2_recr = -3.1, 
   distP = 0.02, Nrep = 1, opt_x1 = 250
 )
 
