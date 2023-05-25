@@ -61,9 +61,9 @@ timesteps <- 50   # Number of time steps to simulate
 
 # Run the Beverton-Holt model simulation
 sim_df <- beverton_holt(N0 = 10, timesteps = 200, 
-  b0_e = 0.0, b1_e = 0.0,
-  b0_k = 155.1, b1_k = 0.3, b1_g = 1.4, b0_r = 10.3, b1_recr = 0.0, b2_recr = -1.1, 
-  distP = 0.01
+  b0_e = 1, b1_e = -.03,
+  b0_k = 100, b1_k = 0.3, b1_g = 1.4, b0_r = 5, b1_recr = 0.0, b2_recr = -1.1, 
+  distP = 0.02
 )
 
 par(mfrow =c(2,1),mar=c(4,4,0.5,0.5))
@@ -73,7 +73,7 @@ abline(v = sim_df[sim_df$disturbance == 0,]$t, col = "orange", lty = 2)
 legend("bottomright",legend = c("disturbance"), 
        col = c("orange"), lty = 2, lwd = c(2), cex = 0.7)
 # abline(v = c(seq(0,nrow(sim_df), 100)), col = "grey50", lty = 2)
-plot(actualR~t, data = sim_df, type = "l", ylim = c(-0.3,3), lwd = 2)
+plot(actualR~t, data = sim_df, type = "l", ylim = c(-0.3,30), lwd = 2)
 # abline(v = c(seq(0,nrow(sim_df), 100)), col = "grey50", lty = 2)
 abline(v = sim_df[sim_df$disturbance == 0,]$t, col = "orange", lty = 2)
 lines(g~t, data = sim_df, col = "blue")
