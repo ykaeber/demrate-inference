@@ -27,16 +27,19 @@ beverton_holt <- function(
     g = plogis(b1_g * x1)*2
   
     #recr_mean = b0_r*exp(b1_recr*x1 + b2_recr*N[i] - 1)
-
-    K_r = b0_r + b1_recr*x1
-    g_recr = plogis(b2_recr * N[i]+0.51)*2
-    recr_mean = (g_recr * recr) / (1 + (recr / K_r))
-    recr = recr_mean#rpois(1, recr_mean)    
     
     # Simulate N dynamics
     disturbance = rbinom(1,1,1-distP)
     
-    N[i] <- (g * N[i-1]) / (1 + (N[i-1] / K))*disturbance + recr
+    N[i] <- (g * N[i-1]) / (1 + (N[i-1] / K))*disturbance
+    
+    recr = max(recr, 1)
+    K_r = 10
+    g_recr = plogis(b0_r + b1_recr*x1+b2_recr*N[i])*2
+    recr_mean = (g_recr * recr) / (1 + (recr / K_r))
+    recr = recr_mean#rpois(1, recr_mean)  
+    
+    N[i] = N[i] + recr
     
     out_df <- rbind(
       out_df,
@@ -59,7 +62,7 @@ timesteps <- 50   # Number of time steps to simulate
 # Run the Beverton-Holt model simulation
 sim_df <- beverton_holt(N0 = 10, timesteps = 200, 
   b0_e = 0.0, b1_e = 0.0,
-  b0_k = 5.1, b1_k = 0.3, b1_g = 1.4, b0_r = 3, b1_recr = 2.01, b2_recr = 0.001, 
+  b0_k = 155.1, b1_k = 0.3, b1_g = 1.4, b0_r = 10.3, b1_recr = 0.0, b2_recr = -1.1, 
   distP = 0.01
 )
 
