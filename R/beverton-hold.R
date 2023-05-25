@@ -60,7 +60,7 @@ beverton_holt <- function(
     }
   }
 
-  sample_vec <- seq(spinup+1, timesteps, sample_interval)
+  sample_vec <- seq(spinup, timesteps-1, sample_interval)
   # Return the N sizes and time steps
   return(out_df[sample_vec,])
 }
