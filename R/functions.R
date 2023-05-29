@@ -6,11 +6,11 @@ RNN_model =
   reticulate::PyClass("model", 
                       inherit = torch$nn$Module,
                       defs = list(
-                        `__init__` = function(self, n_response = 1L, n_times = 200L) {
+                        `__init__` = function(self, n_response = 1L, n_times = 200L, device) {
                           super()$`__init__`()
-                          self$RNN = torch$nn$GRU(input_size = c(2L),  hidden_size = 32L, num_layers = 2L, batch_first = TRUE)
-                          self$linear2 = torch$nn$Linear(32L*as.integer(n_times), 20L)
-                          self$linear1 = torch$nn$Linear(20L, n_response)
+                          self$RNN = torch$nn$GRU(input_size = c(2L),  hidden_size = 32L, num_layers = 2L, batch_first = TRUE)$to(device)
+                          self$linear2 = torch$nn$Linear(32L*as.integer(n_times), 20L)$to(device)
+                          self$linear1 = torch$nn$Linear(20L, n_response)$to(device)
                           NULL
                         },
                         forward = function(self, x) {
@@ -23,24 +23,25 @@ RNN_model =
                         }
                       ))
 
-train_function = function(data, split = 0.8, epochs = 1000L, n_response = 1L, device = 0L) {
+train_function = function(data, split = 0.8, epochs = 1000L, n_response = 1L, device = 0L, ntimes = 500L) {
   device = paste0('cuda:', device)
   # Scaling
   X = (data[,-(1:n_response)])
-  N_t = X[,1:200]
-  X_t = X[,201:400]
+  N_t = X[,1:ntimes]
+  X_t = X[,(ntimes+1):(ntimes*2)]
   N_t = (N_t - mean(as.vector(N_t)))/sd(as.vector(N_t))
   X = cbind(N_t, X_t)
   Y = data[, 1:n_response, drop=FALSE]
   split_border = round(nrow(data)*split)
-  XX = array(X[1:split_border,], dim = c(split_border, 200L,2L))
-  model = RNN_model(n_response = as.integer(n_response) )$to(device)
+  XX = array(X[1:split_border,], dim = c(split_border, ntimes,2L))
+  torch$cuda$set_device(device)
+  model = RNN_model(n_response = as.integer(n_response), n_times = ntimes, device = device )$cuda()
   optimizer = torch$optim$Adamax(model$parameters(), lr = 0.001)
   lambda1 = torch$tensor(0.0008)$to(device)
   lambda2 = torch$tensor(0.001)$to(device)
   DT = 
-    torch$utils$data$TensorDataset(torch$tensor(XX, dtype = torch$float32)$to(device), 
-                                   torch$tensor(Y[1:split_border,,drop=FALSE], dtype = torch$float32)$to(device))
+    torch$utils$data$TensorDataset(torch$tensor(XX, dtype = torch$float32, device = device), 
+                                   torch$tensor(Y[1:split_border,,drop=FALSE], dtype = torch$float32, device = device))
   DL = torch$utils$data$DataLoader(DT, batch_size = 50L, shuffle = TRUE, pin_memory = FALSE)
   
   for(e in 1:epochs) {
@@ -59,7 +60,7 @@ train_function = function(data, split = 0.8, epochs = 1000L, n_response = 1L, de
     }
     if(e %% 10 ==0) cat(paste0("Epoch: ",e," Loss: ", loss$item(), "\n"))
   }
-  XX = array(X[(split_border+1L):nrow(X),], dim = c(length((split_border+1L):nrow(X)), 200L,2L))
+  XX = array(X[(split_border+1L):nrow(X),], dim = c(length((split_border+1L):nrow(X)), ntimes,2L))
   XT = torch$tensor(XX, 
                     dtype = torch$float32)$to(device)
   Pred = model(XT)$data$cpu()$numpy()

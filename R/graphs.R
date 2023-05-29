@@ -1,4 +1,4 @@
-res <- readRDS("results/results_2000.RDS")
+res <- readRDS("results/results_10000.RDS")
 str(res)
 
 library(ggplot2)
@@ -58,7 +58,7 @@ dt <- data.table(
   obs = res$`distP+b1_recr`$results$pred[,1]
 )
 
-plot(tail(res$distP$data$distP,600), res$distP$results$obs)
+plot(tail(res$distP$data$distP,3000), res$distP$results$obs)
 
 ggplot(
   data = data.frame(
@@ -71,8 +71,8 @@ ggplot(
 
 ggplot(
   data = data.frame(
-    distP_obs = res$$results$obs,
-    recr_pred = res$b2_recr$results$,
+    distP_obs = res$b2_recr$results$obs,
+    recr_pred = res$b2_recr$results$pred,
     recr_obs = res$b2_recr$results$obs
   ), aes(cut(recr_obs, breaks = 10), cut(distP_obs, breaks = 10), fill = (recr_pred-recr_obs)^2))+
   geom_tile()
