@@ -2,14 +2,14 @@ library(sjSDM)
 library(reticulate)
 library(parallel)
 library(Rcpp)
-sourceCpp("R/beverton-hold.cpp")
-source("R/functions.R")
+sourceCpp("library/beverton-hold.cpp")
+source("library/functions.R")
 
 
 cl = makeCluster(12L)
 nodes = unlist(parallel::clusterEvalQ(cl, paste(Sys.info()[['nodename']], Sys.getpid(), sep='-')))
-clusterEvalQ(cl, {library(sjSDM);source("R/functions.R")})
-clusterEvalQ(cl, {library(Rcpp);sourceCpp("R/beverton-hold.cpp")})
+clusterEvalQ(cl, {library(sjSDM);source("library/functions.R")})
+clusterEvalQ(cl, {library(Rcpp);sourceCpp("library/beverton-hold.cpp")})
 
 parameter = 
   data.frame(
