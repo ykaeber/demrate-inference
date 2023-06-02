@@ -4,7 +4,7 @@ library(BayesianTools)
 sourceCpp("library/beverton-hold.cpp")
 
 data =
-  lapply(1:3000, function(i) {
+  lapply(1:1000, function(i) {
     
     distP = runif(1, 0, 0.2)
     b0_e = runif(1, 0, 1.0) 
@@ -43,7 +43,7 @@ data =
 data = (abind::abind(data, along = 0L))
 
 
-cl = makeCluster(60L)
+cl = makeCluster(10L)
 parallel::clusterExport(cl, varlist = ls(envir = .GlobalEnv))
 clusterEvalQ(cl, {library(BayesianTools);Rcpp::sourceCpp("library/beverton-hold.cpp")})
 
@@ -82,4 +82,4 @@ results = parLapply(cl, 1:nrow(data), function(KK) {
   
   return(cbind(inferred, true_pars))
 })
-saveRDS(results, file = "results/MCMC_3000.RDS")
+saveRDS(results, file = "results/MCMC_1000.RDS")
