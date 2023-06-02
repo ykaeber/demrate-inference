@@ -4,8 +4,12 @@ library(wesanderson)
 library(forcats)
 
 res <- readRDS("results/results_10000.RDS")
+figures_path = "figures"
 
-if(!dir.exists("figures")) dir.create("figures")
+# res <- readRDS("results/MCMC_1000.RDS")
+# figure_path = "figures_mcmc"
+
+if(!dir.exists(figure_path)) dir.create(figure_path)
 
 # get data into one data.table
 res_dt <- data.table()
@@ -49,12 +53,12 @@ coefs_dt <-
     coef = coefficients(fm)
     )
 
-png("figures/pareffect.png", res = 300, units = "in", width = 7, height = 7)
+png(paste0(figure_path, "/pareffect.png"), res = 300, units = "in", width = 7, height = 7)
 ggplot(coefs_dt, aes(y = name, x = coef))+
   geom_point()
 dev.off()
 
-pdf("figures/all_combs.pdf", width = 8*2, height = 4.5*2)
+pdf(paste0(figure_path, "/all_combs.pdf"), width = 8*2, height = 4.5*2)
 i_par = "b1_g"
 for(i_par in c("distP", "b0_e", "b1_recr", "b2_recr", "b1_g", "b2_g")){
   cat(i_par, "\n")
