@@ -78,23 +78,30 @@ cohortsIN <- list(
 
 parsModel <- list(
   timesteps = 500,
-  actualSpecies = c(0,9,17,13),
+  actualSpecies = 1:29,
   baseReg = 10,
   bgMort = 2.3,
-  distP = 0.05,
-  #intrinsicGrowth = 2,
+  distP = 0.01,
+  env = 0.6,
   initPop = cohortsIN,
-  #initPop = NULL,
   speciesPars = selected_species_pars
 )
 
 library("Rcpp")
 sourceCpp("library/fordem.cpp")
 
-out <- capture.output(
-  runModel(pars = parsModel, speciesPars = selected_species_pars)
+system.time(
+  out <- capture.output(
+    runModel(pars = parsModel, speciesPars = selected_species_pars)
+  )
 )
 out1 <- fread(paste0(out, collapse = "\n") )
+out1 <- merge(selected_species_pars[,c("spID","species")], out1, by = "spID")
+
 ggplot(out1, aes(x = t, y = nTrsSum*dbhMean))+
-  geom_line(aes(color = factor(spID)))
+  geom_line(aes(color = species))
+
+ggplot(out1, aes(x = t, y = nTrsSum*dbhMean))+
+  geom_line(aes(color = species))
+
 

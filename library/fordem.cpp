@@ -313,13 +313,14 @@ void printDataFrame(DataFrame df, int t) {
 // [[Rcpp::export]]
 void runModel(List pars, List speciesPars) {
   List cohorts = pars["initPop"];
+  double env = pars["env"];
   int timesteps = pars["timesteps"];
   DataFrame out_df;
   
   for (int t = 1; t <= timesteps; t++) {
     double LAI = lai_f(cohorts, speciesPars);
     int tDist = R::rbinom(1, pars["distP"]);
-    double env = 0.5;
+    // double env = 0.5;
     
     cohorts = regeneration_f(cohorts, LAI, env, pars, speciesPars);
     cohorts = growth_f(cohorts, LAI, env, pars, speciesPars);
