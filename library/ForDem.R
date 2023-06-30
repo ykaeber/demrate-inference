@@ -48,7 +48,9 @@ shadeF = function(LAI, shadeMean, shadeSD = 0.1){
 #x = seq(0,50,0.1)
 #plot(x, sapply(x, function(x1) shadeF(x1, shadeMean = 0.01, shadeSD = 0.3)), ylim = c(0,1))
 
-weather = function() runif(1,0,1)
+#weather = function() runif(1,0,1)
+
+# weather = function(speciesPars) speciesPars[spID == 17]$kDDMin/1100
 
 regeneration_f = function(cohorts, LAI, env, pars){
   speciesPars = pars$speciesPars
@@ -97,7 +99,8 @@ parabulaF <- function(x, b0, b1){
 }
 
 growth_f = function(cohorts, LAI, env, pars){
-  for (i in 1:length(cohorts)) {
+  aliveCohorts = which(sapply(cohorts, function(x) x$nTrs>0))
+  for (i in aliveCohorts) {
     speciesPars = pars$speciesPars
     D = cohorts[[i]]$dbh
     iSpID = cohorts[[i]]$spID
@@ -133,32 +136,56 @@ growth_f = function(cohorts, LAI, env, pars){
   return(cohorts)
 }
 
-mortality_f = function(cohorts, LAI, env, pars){
-  for (i in 1:length(cohorts)) {
-    nTrsDead = rbinom(1,1,0.1)
-    cohorts[[i]]$nTrs = max(c(0, round(cohorts[[i]]$nTrs-nTrsDead)))
+mortality_f = function(cohorts, LAI, env, tDist, pars){
+  aliveCohorts = which(sapply(cohorts, function(x) x$nTrs>0))
+  for (i in aliveCohorts) {
+    speciesPars = pars$speciesPars
+    kAlpha = pars$bgMort
+    D = cohorts[[i]]$dbh
+    iSpID= cohorts[[i]]$spID
+    kDMax = speciesPars[spID == iSpID]$kDMax
+    
+    shadeMean = speciesPars[spID == iSpID]$kLy
+    shadeCond = shadeF(LAI, shadeMean = shadeMean)
+    
+    envMean = speciesPars[spID == iSpID]$kDDMin/1100
+    envCond = envF(envMean = envMean, env = env)
+    
+    # Cohort-specific size-dependent mortality
+    gPSize = 0.1 * (D / kDMax)^kAlpha                    #annual mortality rate at kDMax = 10%
+    
+    mortP = min(c((1-shadeCond) + (1-envCond) + gPSize + tDist, 1))
+    #print(paste0("sp=",speciesPars[spID == iSpID]$species,"    shadeMean=",shadeMean, "    envMean=", envMean, "   mortP=", mortP))
+    if(cohorts[[i]]$nTrs > 0){
+      nTrsDead = sum(rbinom(cohorts[[i]]$nTrs,1,mortP))
+      cohorts[[i]]$nTrs = max(c(0, cohorts[[i]]$nTrs-nTrsDead))
+    }
   }
+  
   return(cohorts)
 }
 
 
 runModel <- function(pars){
+  speciesPars = pars[["speciesPars"]]
   cohorts = pars[["initPop"]]
   timesteps = pars[["timesteps"]]
   out = data.table()
   
   if(!is.null(cohorts)){
-    plot(0,sum(sapply(cohorts, function(x) x$nTrs)), xlim = c(0, pars$timesteps), ylim = c(0,1000))
+    plot(0,sum(sapply(cohorts, function(x) x$nTrs)), xlim = c(0, pars$timesteps), ylim = c(0,100))
   }else{
     plot(0,0, xlim = c(0, pars$timesteps), ylim = c(0,1000))
   }
   
   for(t in 1:timesteps){
     LAI = lai_f(cohorts, pars)
-    env = weather()
+    tDist = rbinom(1,1,pars[["distP"]])
+    # env = weather()
+    env = speciesPars[spID == 9]$kDDMin/1100
     cohorts = regeneration_f(cohorts, LAI, env, pars)
     cohorts = growth_f(cohorts, LAI = LAI, env = env, pars)
-    cohorts = mortality_f(cohorts, LAI = LAI, env = env, pars)
+    cohorts = mortality_f(cohorts, LAI = LAI, env = env, tDist = tDist, pars)
     #cohorts = growth_f(cohorts, LAI[t], env[t])
     points(t,sum(sapply(cohorts, function(x) x$nTrs)))
     #cohorts = mortality_f(cohorts, LAI[t], env[t], pars)

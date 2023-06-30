@@ -32,9 +32,11 @@ cohortsIN <- list(
 # )
 
 parsModel <- list(
-  timesteps = 500,
+  timesteps = 200,
   species = c(0,9,17,13),
   baseReg = 10,
+  bgMort = 2.3,
+  distP = 0,
   #intrinsicGrowth = 2,
   initPop = cohortsIN,
   #initPop = NULL,
@@ -54,7 +56,7 @@ ggplot(cohorts,
 
 
 
-ggplot(cohorts[, .(nTrs = sum(nTrs), dbh = mean(dbh)), by = .(spID, t)],
+ggplot(cohorts[, .(nTrs = sum(nTrs), dbh = weighted.mean(dbh, nTrs)), by = .(spID, t)],
        aes(y = dbh, x = t))+
   geom_line(aes(color = factor(spID)))
 
