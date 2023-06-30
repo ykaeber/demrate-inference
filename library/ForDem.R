@@ -56,8 +56,8 @@ regeneration_f = function(cohorts, LAI, env, pars){
   speciesPars = pars$speciesPars
   regP = c()
   baseReg = pars$baseReg
-  for(i in 1:length(pars[["species"]])){
-    iSpID= pars[["species"]][i]
+  for(i in 1:length(pars[["actualSpecies"]])){
+    iSpID= pars[["actualSpecies"]][i]
     shadeMean = speciesPars[spID == iSpID]$kLy
     shadeCond = shadeF(LAI, shadeMean = shadeMean)
     
@@ -76,8 +76,8 @@ regeneration_f = function(cohorts, LAI, env, pars){
   if(sum(regP) == 0) regTrsMeans = regP else regTrsMeans = regP/sum(regP)*baseReg
   
   if(!is.null(cohorts)) newID = cohorts[length(cohorts)][[1]][["cohortID"]] else newID = 0
-  for(i in 1:length(pars[["species"]])){
-    iSpID= pars[["species"]][i]
+  for(i in 1:length(pars[["actualSpecies"]])){
+    iSpID= pars[["actualSpecies"]][i]
     if(regTrsMeans[i] > 0){
       newTrs = rpois(1, regTrsMeans)
       if(newTrs > 0){
@@ -97,6 +97,7 @@ regeneration_f = function(cohorts, LAI, env, pars){
 parabulaF <- function(x, b0, b1){
   (b0*x + b1*(x)^2)/(b0^2 + b1*(b0)^2)
 }
+
 
 growth_f = function(cohorts, LAI, env, pars){
   aliveCohorts = which(sapply(cohorts, function(x) x$nTrs>0))
