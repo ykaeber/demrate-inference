@@ -78,7 +78,7 @@ cohortsIN <- list(
 
 parsModel <- list(
   timesteps = 500,
-  actualSpecies = 1:29,
+  actualSpecies = c(0,13,1,17,5),
   baseReg = 10,
   bgMort = 2.3,
   distP = 0.01,
