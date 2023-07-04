@@ -4,6 +4,11 @@
 ## Date:
 ## Author:
 ################################################################################
+library("Rcpp")
+library(data.table)
+library(ggplot2)
+sourceCpp("library/fordem.cpp")
+
 selected_species_pars <- 
 data.frame(
   stringsAsFactors = FALSE,
@@ -77,9 +82,11 @@ cohortsIN <- list(
 )
 
 parsModel <- list(
-  timesteps = 500,
+  timesteps = 1000,
+  sampleSteps = 1,
   actualSpecies = c(0,13,1,17,5),
-  baseReg = 10,
+  baseReg = 50,
+  baseRegP = 0.1,
   bgMort = 2.3,
   distP = 0.01,
   env = 0.7,
@@ -88,36 +95,35 @@ parsModel <- list(
   initPop = cohortsIN,
   speciesPars = selected_species_pars
 )
-
-library("Rcpp")
-sourceCpp("library/fordem.cpp")
-system.time(
-runModel(pars = parsModel, speciesPars = selected_species_pars)
-)
 system.time(
   out <- capture.output(
     runModel(pars = parsModel, speciesPars = selected_species_pars)
   )
 )
+
 out1 <- fread(paste0(out, collapse = "\n") )
-out1 <- merge(out1, selected_species_pars[,c("spID","species")], by = "spID")
+ggplot(out1[, .(V2 = mean(V2)), by = .(V1, V5)], aes(x = V5, y = V2))+
+  geom_line(aes(color = factor(V1)))
 
-allout1 <- out1[,.(baHectar = mean(baTot)*100), by = .(species, t)]
-ggplot(allout1, aes(x = t, y = baHectar))+
-  geom_line(aes(color = species))
-
-
-hist(out1$baHectar)
-
-ggplot(out1, aes(x = t, y = baHectar))+
-  geom_line(aes(color = species, group = factor(p)), alpha = 0.5)
-
-ggplot(out1, aes(x = t, y = nTrsSum*dbhMean))+
-  geom_line(aes(color = species))
-
-
-
-ggplot(out1, aes(x = t, y = 100*nTrsSum*pi*(((dbhMean/100)/2)^2)))+
-  geom_line(aes(color = species))
-
-
+# out1 <- merge(out1, selected_species_pars[,c("spID","species")], by = "spID")
+# 
+# allout1 <- out1[,.(baHectar = mean(baTot)*100), by = .(species, t)]
+# ggplot(allout1, aes(x = t, y = baHectar))+
+#   geom_line(aes(color = species))
+# 
+# 
+# 
+# hist(out1$baHectar)
+# 
+# ggplot(out1, aes(x = t, y = baHectar))+
+#   geom_line(aes(color = species, group = factor(p)), alpha = 0.5)
+# 
+# ggplot(out1, aes(x = t, y = nTrsSum*dbhMean))+
+#   geom_line(aes(color = species))
+# 
+# 
+# 
+# ggplot(out1, aes(x = t, y = 100*nTrsSum*pi*(((dbhMean/100)/2)^2)))+
+#   geom_line(aes(color = species))
+# 
+# 
