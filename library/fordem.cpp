@@ -12,8 +12,31 @@ double gFolA_f(double kA1, double kA2, double kC1, double kC2, double dbh, doubl
 }
 
 
+
 // [[Rcpp::export]]
-int findValueIndex(IntegerVector vec, int target) {
+NumericMatrix repMat(NumericMatrix mat, int N) {
+  int numRows = mat.nrow();
+  int numCols = mat.ncol();
+  int newNumCols = numCols + 1;
+  int newNumRows = numRows * N;
+  
+  NumericMatrix result(newNumRows, newNumCols);
+  
+  for (int i = 0; i < N; i++) {
+    for (int j = 0; j < numRows; j++) {
+      for (int k = 0; k < numCols; k++) {
+        result(i * numRows + j, k) = mat(j, k);
+      }
+      result(i * numRows + j, numCols) = i+1;
+    }
+  }
+  
+  return result;
+}
+
+
+// [[Rcpp::export]]
+int findIntegerIndex(IntegerVector vec, int target) {
   for (int i = 0; i < vec.length(); i++) {
     if (vec[i] == target) {
       return i;  // Return the index of the matching element
@@ -24,8 +47,20 @@ int findValueIndex(IntegerVector vec, int target) {
   return -1;
 }
 
+
 // [[Rcpp::export]]
-void printMatrix(const NumericMatrix& mat, int t, int p) {
+int findCharacterIndex(CharacterVector vec, String target) {
+  for (int i = 0; i < vec.length(); i++) {
+    if (vec[i] == target) {
+      return i;  // Return the index of the matching element
+    }
+  }
+  // If no match is found, return -1 or any other appropriate value
+  return -1;
+}
+
+// [[Rcpp::export]]
+void printMatrix(const NumericMatrix& mat) {
   int nrows = mat.nrow();
   int ncols = mat.ncol();
   
@@ -33,16 +68,16 @@ void printMatrix(const NumericMatrix& mat, int t, int p) {
     for (int j = 0; j < ncols; j++) {
       Rcpp::Rcout << mat(i, j) << " ";
     }
-    Rcpp::Rcout << t << " " << p <<"\n";
+    Rcpp::Rcout << "\n";
   }
 }
-
 
 class stateClass {
 private:
   NumericMatrix data;
   NumericVector rowSums;
   NumericVector colSums;
+  double LAI;
   
 public:
   stateClass(int nrow, int ncol) : data(nrow, ncol), rowSums(nrow), colSums(ncol) {
@@ -54,25 +89,64 @@ public:
     calculateSums();
   }
   
-  void updateLAI(List cohorts, List speciesPars, double areaHectar, IntegerVector actualSpecies){
+  void add(int row, int col, double value) {
+    data(row, col) += value;
+    calculateSums();
+  }
+  
+  void updateLAI(List cohorts, List speciesPars, double areaHectar, IntegerVector actualSpecies, CharacterVector outVars){
     NumericVector kA1Vec = as<NumericVector>(speciesPars["kA1"]);
     NumericVector kA2Vec = as<NumericVector>(speciesPars["kA2"]);
     NumericVector kC1Vec = as<NumericVector>(speciesPars["kC1"]);
     NumericVector kC2Vec = as<NumericVector>(speciesPars["kC2"]);
     
-    double lai = 0;
+    int laiIDX = findCharacterIndex(outVars, "lai");
+    int dbhIDX = findCharacterIndex(outVars, "dbh");
+    int nTrsIDX = findCharacterIndex(outVars, "nTrs");
+    int baIDX = findCharacterIndex(outVars, "ba");
+    
+    IntegerVector countVec(actualSpecies.length());
+    countVec.fill(0);
+    
+    IntegerVector nTrsVec(actualSpecies.length());
+    nTrsVec.fill(0);
+    
+    LAI = 0;
     for (int i = 0; i < data.nrow(); i++) {
-      data(i, 1) = 0; 
+      data(i, laiIDX) = 0; 
+      data(i, dbhIDX) = 0; 
+      data(i, nTrsIDX) = 0; 
+      data(i, baIDX) = 0; 
     }
+    
     for (int i = 0; i < cohorts.size(); i++) {
       List iCohort = cohorts[i];
       int iSpID = iCohort["spID"];
+      int spIDX = findIntegerIndex(actualSpecies, iSpID);
       double dbh = iCohort["dbh"];
       int nTrs = iCohort["nTrs"];
       double gFolA = gFolA_f(kA1Vec[iSpID], kA2Vec[iSpID], kC1Vec[iSpID], kC2Vec[iSpID], dbh, areaHectar);
-      lai += gFolA * nTrs;
-      data(findValueIndex(actualSpecies, iSpID),1) += lai;
-    }
+      LAI += gFolA * nTrs;
+      
+      if(laiIDX != -1) data(spIDX,laiIDX) += gFolA * nTrs;
+      if(dbhIDX != -1) data(spIDX,dbhIDX) += dbh*nTrs;
+      if(baIDX != -1) data(spIDX,baIDX) += nTrs*3.14159*std::pow(((dbh/100)/2), 2) * 1 / areaHectar;
+      
+      if(nTrsIDX != -1) {
+        data(spIDX, nTrsIDX) += nTrs;
+        }else{
+          nTrsVec[nTrsIDX] += nTrs;
+          }
+        }
+    if(dbhIDX != -1){
+      for (int i = 0; i < data.nrow(); i++) {
+        if(nTrsIDX != -1) {
+          data(i, dbhIDX) = data(i, dbhIDX)/data(i, nTrsIDX); 
+        }else{
+          data(i, dbhIDX) = data(i, dbhIDX)/nTrsVec[i]; 
+        }
+      }
+      }
     calculateSums();
   }
   
@@ -96,6 +170,9 @@ public:
   
   NumericVector getColSums() {
     return colSums;
+  }
+  NumericVector getLAI() {
+    return LAI;
   }
 };
 
@@ -220,6 +297,7 @@ List growth_f(List cohorts, double LAI, double env, List pars, List speciesPars)
   NumericVector kGVec = as<NumericVector>(speciesPars["kG"]);
   NumericVector envMeanVec = as<NumericVector>(speciesPars["kDDMin"]) / 1100;  
   
+  cohorts = clone(cohorts);
   for (int i = 0; i < cohorts.size(); i++) {
     List iCohort = cohorts[i];
     double D = iCohort["dbh"];
@@ -255,6 +333,7 @@ List mortality_f(List cohorts, double LAI, double env, double tDist, List pars, 
   NumericVector shadeMeanVec = as<NumericVector>(speciesPars["kLy"]);
   NumericVector envMeanVec = as<NumericVector>(speciesPars["kDDMin"])/1100;
 
+  cohorts = clone(cohorts);
   for (int i = 0; i < cohorts.size(); i++) {
     List iCohort = cohorts[i];
     double D = iCohort["dbh"];
@@ -294,163 +373,59 @@ List mortality_f(List cohorts, double LAI, double env, double tDist, List pars, 
 }
 
 // [[Rcpp::export]]
-DataFrame calculateMeansAndSums(List cohorts, int t, int p, List pars) {
-  if(cohorts.size() == 0){
-    List cohorts = List::create(Named("spID") = 0,
-                               Named("cohortID") = 0,
-                               Named("nTrs") = 0,
-                               Named("dbh") = 0);
-  }
-    
-    double areaHectar = pars["areaHectar"];
-  
-    std::unordered_map<int, double> nTrsMean;
-    std::unordered_map<int, double> nTrsSum;
-    std::unordered_map<int, double> dbhMean;
-    std::unordered_map<int, double> dbhSum;
-    std::unordered_map<int, double> ba;
-    std::unordered_map<int, int> count;
-  
-    int numCohorts = cohorts.size();
-    for (int i = 0; i < numCohorts; i++) {
-      List cohort = cohorts[i];
-      int spID = cohort["spID"];
-      double nTrs = cohort["nTrs"];
-      double dbh = cohort["dbh"];
-  
-      nTrsMean[spID] += nTrs;
-      nTrsSum[spID] += nTrs;
-      dbhMean[spID] += dbh*nTrs;
-      dbhSum[spID] += dbh;
-      //((dbh/100)/2)^2
-      ba[spID] += nTrs*3.14159*std::pow(((dbh/100)/2), 2);
-      count[spID]++;
-    }
-  
-    int numSpecies = nTrsMean.size();
-    IntegerVector spIDVec(numSpecies);
-    NumericVector nTrsMeanVec(numSpecies);
-    NumericVector nTrsSumVec(numSpecies);
-    NumericVector dbhMeanVec(numSpecies);
-    NumericVector dbhSumVec(numSpecies);
-    NumericVector baHectarVec(numSpecies);
-    NumericVector baTotVec(numSpecies);
-  
-    std::unordered_map<int, double>::iterator it;
-    int index = 0;
-    for (it = nTrsMean.begin(); it != nTrsMean.end(); ++it) {
-      int spID = it->first;
-      double nTrsMeanValue = it->second / count[spID];
-      double nTrsSumValue = nTrsSum[spID];
-      double dbhMeanValue = dbhMean[spID] / nTrsSum[spID];
-      double dbhSumValue = dbhSum[spID];
-      double baHectar =  ba[spID] * 1/ areaHectar;
-      double baTot = ba[spID];
-  
-      if (std::isnan(dbhMeanValue)) dbhMeanValue = 0;
-  
-      spIDVec[index] = spID;
-      nTrsMeanVec[index] = roundToDecimal(nTrsMeanValue, 2);
-      nTrsSumVec[index] = roundToDecimal(nTrsSumValue, 2);
-      dbhMeanVec[index] = roundToDecimal(dbhMeanValue, 2);
-      dbhSumVec[index] = roundToDecimal(dbhSumValue, 2);
-      baHectarVec[index] = roundToDecimal(baHectar, 4);
-      baTotVec[index] = roundToDecimal(baTot, 4);
-  
-      index++;
-    }
-  
-    DataFrame result = DataFrame::create(Named("spID") = spIDVec,
-                                         Named("nTrsMean") = nTrsMeanVec,
-                                         Named("nTrsSum") = nTrsSumVec,
-                                         Named("dbhMean") = dbhMeanVec,
-                                         Named("dbhSum") = dbhSumVec,
-                                         Named("baHectar") = baHectarVec,
-                                         Named("baTot") = baTotVec,
-                                         Named("t") = t,
-                                         Named("p") = p
-                                           );
-    
-    return result;
-}
-
-
-// [[Rcpp::export]]
-void printDataFrame(DataFrame df, int t, int p) {
-  // Get the number of rows and columns in the data frame
-  int numRows = df.nrows();
-  int numCols = df.size();
-  
-  // Convert column names to std::vector<std::string>
-  std::vector<std::string> colNames = as<std::vector<std::string>>(df.names());
-  
-  // Print column names
-  if (t == 1 && p == 1){
-    for (int i = 0; i < numCols; i++) {
-      Rcout << colNames[i] << "\t";
-    }
-    Rcout << std::endl;
-  }  
-  // Iterate over the rows
-  for (int j = 0; j < numRows; j++) {
-    // Iterate over the columns
-    for (int i = 0; i < numCols; i++) {
-      // Get the i-th column from the data frame
-      SEXP col = df[i];
-      
-      // Get the j-th value in the column
-      switch (TYPEOF(col)) {
-      case INTSXP:
-        Rcout << INTEGER(col)[j] << "\t";
-        break;
-      case REALSXP:
-        Rcout << REAL(col)[j] << "\t";
-        break;
-      case STRSXP:
-        Rcout << CHAR(STRING_ELT(col, j)) << "\t";
-        break;
-      default:
-        Rcout << "NA\t";
-      break;
-      }
-    }
-    Rcout << std::endl;
-  }
-}
-
-// [[Rcpp::export]]
 void runModel(List pars, List speciesPars) {
   int patchesN = pars["patchesN"];
   double env = pars["env"];
   int timesteps = pars["timesteps"];
   double areaHectar = pars["areaHectar"];
+  List initCohorts = pars["initPop"];
   IntegerVector actualSpeciesVec = pars["actualSpecies"];
   DataFrame out_df;
   
-  CharacterVector colNames = CharacterVector::create("SpID", "lai", "nTrs", "dbh");
-  stateClass stateVars(actualSpeciesVec.length(), colNames.length());
   
+  CharacterVector outVars = pars["outVars"];
+  stateClass stateVars(actualSpeciesVec.length(), outVars.length());
+  stateClass stateVarsTot(actualSpeciesVec.length(), outVars.length());
+  NumericMatrix outMat(actualSpeciesVec.length(), outVars.length());
+  
+
   // Add values to the specified column
   for (int i = 0; i < stateVars.getMatrix().nrow(); i++) {
-    stateVars.getMatrix()(i, 0) += actualSpeciesVec[i];
-    for(int j = 1; j < stateVars.getMatrix().nrow(); j++){
-      stateVars.getMatrix()(i, j) += 0;
-    }
+    stateVars.getMatrix()(i, 0) = actualSpeciesVec[i];
+    stateVarsTot.getMatrix()(i, 0) = actualSpeciesVec[i];
+    outMat(i, 0) = actualSpeciesVec[i];
   }
   
-  for (int p = 1; p <= patchesN; p++) {
-  List cohorts = pars["initPop"];
+  outMat = repMat(outMat, timesteps);
+  outMat = repMat(outMat, patchesN);
   
+  // start printing
+  for (int i = 0; i < outVars.length(); i++) {
+    Rcpp::Rcout << outVars[i] << " ";
+  }
+    Rcpp::Rcout << "t p\n";
+
+  for (int p = 1; p <= patchesN; p++) {
+    List cohorts = clone(initCohorts);
     for (int t = 1; t <= timesteps; t++) {
       // startTimer();
-      stateVars.updateLAI(cohorts, speciesPars, areaHectar, actualSpeciesVec);
+      stateVars.updateLAI(cohorts, speciesPars, areaHectar, actualSpeciesVec, outVars);
       
-      double LAI = stateVars.getColSums()[1];
+      for (int i = 0; i < stateVars.getMatrix().nrow(); i++) {
+        for(int j = 1; j < stateVars.getMatrix().ncol(); j++){
+          outMat( (i + ((t-1)*actualSpeciesVec.length()))*(p-1), j) = stateVars.getMatrix()(i, j);
+        }
+      }
+      
+      //printMatrix(stateVars.getMatrix());
+      //Rcpp::Rcout << "\n\n\n";
+      
+      //double LAI = stateVars.getLAI()[1];
+      double LAI = 0;
       // if(t==timesteps && p == patchesN) printElapsedTime("finished LAI");
       int tDist = R::rbinom(1, pars["distP"]);
       //double env = 0.5;
       
-      // startTimer();
       cohorts = regeneration_f(cohorts, LAI, env, pars, speciesPars);
       // if(t==timesteps && p == patchesN) printElapsedTime("finished regeneration / start growth");
       // startTimer();
@@ -465,10 +440,12 @@ void runModel(List pars, List speciesPars) {
       // if(t==timesteps && p == patchesN) printElapsedTime("finished calculateMeansAndSums / start printDataFrame");
 
       // Rcpp::print(stateVars.getColSums());
-      printMatrix(stateVars.getMatrix(), t, p);
+      // printMatrix(stateVars.getMatrix(), t, p);
       //startTimer();
       //printDataFrame(out_df, p, t);
       //printElapsedTime("finished printDataFrame");
+      
     }
   }
+  printMatrix(outMat);
 }

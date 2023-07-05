@@ -65,7 +65,7 @@ data.frame(
           12L,12L,12L,12L,12L,12L,12L,12L,12L,12L,12L)
 )
 
-
+sourceCpp("library/fordem.cpp")
 cohortsIN <- list(
   list(
     cohortID = 1,
@@ -81,20 +81,34 @@ cohortsIN <- list(
   )
 )
 
+
+
 parsModel <- list(
-  timesteps = 1000,
+  timesteps = 200,
   sampleSteps = 1,
+  outVars = c("SpID", "lai", "nTrs", "dbh", "ba"),
   actualSpecies = c(0,13,1,17,5),
   baseReg = 50,
   baseRegP = 0.1,
   bgMort = 2.3,
   distP = 0.01,
   env = 0.7,
-  patchesN = 10,
+  patchesN = 1,
   areaHectar = 0.01,
   initPop = cohortsIN,
   speciesPars = selected_species_pars
 )
+
+runModel(pars = parsModel, speciesPars = selected_species_pars)
+
+
+regeneration_f(cohortsIN, 20, 0.7, parsModel, selected_species_pars)
+cohortsIN = growth_f(cohortsIN, 20, 0.7, parsModel, selected_species_pars)
+mortality_f(cohortsIN, 2, 0.7, 0, parsModel, selected_species_pars)
+
+
+runModel(pars = parsModel, speciesPars = selected_species_pars)
+
 system.time(
   out <- capture.output(
     runModel(pars = parsModel, speciesPars = selected_species_pars)
@@ -102,8 +116,8 @@ system.time(
 )
 
 out1 <- fread(paste0(out, collapse = "\n") )
-ggplot(out1[, .(V2 = mean(V2)), by = .(V1, V5)], aes(x = V5, y = V2))+
-  geom_line(aes(color = factor(V1)))
+ggplot(out1[, .(ba = mean(ba)), by = .(t, SpID)], aes(x = t, y = ba))+
+  geom_line(aes(color = factor(SpID)))
 
 # out1 <- merge(out1, selected_species_pars[,c("spID","species")], by = "spID")
 # 
@@ -127,3 +141,8 @@ ggplot(out1[, .(V2 = mean(V2)), by = .(V1, V5)], aes(x = V5, y = V2))+
 #   geom_line(aes(color = species))
 # 
 # 
+
+
+
+
+
