@@ -66,6 +66,10 @@ data.frame(
 )
 
 sourceCpp("library/fordem.cpp")
+sourceCpp("library/funtest.cpp")
+testDist(100, 0.5)
+
+
 cohortsIN <- list(
   list(
     cohortID = 1,
@@ -76,15 +80,15 @@ cohortsIN <- list(
   list(
     cohortID = 2,
     spID = 17,
-    nTrs = 4,
-    dbh = 30
+    nTrs = 3,
+    dbh = 38
   )
 )
 
 
 
 parsModel <- list(
-  timesteps = 200,
+  timesteps = 100,
   sampleSteps = 1,
   outVars = c("SpID", "lai", "nTrs", "dbh", "ba"),
   actualSpecies = c(0,13,1,17,5),
@@ -95,32 +99,40 @@ parsModel <- list(
   env = 0.7,
   patchesN = 1,
   areaHectar = 0.01,
-  initPop = cohortsIN,
+  initPop = NULL,
   speciesPars = selected_species_pars
 )
 
-runModel(pars = parsModel, speciesPars = selected_species_pars)
-
-
-regeneration_f(cohortsIN, 20, 0.7, parsModel, selected_species_pars)
-cohortsIN = growth_f(cohortsIN, 20, 0.7, parsModel, selected_species_pars)
-mortality_f(cohortsIN, 2, 0.7, 0, parsModel, selected_species_pars)
-
-
-runModel(pars = parsModel, speciesPars = selected_species_pars)
+# runModel(pars = parsModel, speciesPars = selected_species_pars)
+# regeneration_f(cohortsIN, 20, 0.7, parsModel, selected_species_pars)
+# cohortsIN = growth_f(cohortsIN, 20, 0.7, parsModel, selected_species_pars)
+# mortality_f(cohortsIN, 20, 0.7, 0, parsModel, selected_species_pars)
+# runModel(pars = parsModel, speciesPars = selected_species_pars)
 
 system.time(
-  out <- capture.output(
-    runModel(pars = parsModel, speciesPars = selected_species_pars)
-  )
+  outMat1 <- runModel(pars = parsModel, speciesPars = selected_species_pars)
 )
+outDT <- data.table(outMat1)
+names(outDT) <- c(parsModel$outVars,"t","p")
+out1 <- outDT
 
-out1 <- fread(paste0(out, collapse = "\n") )
-ggplot(out1[, .(ba = mean(ba)), by = .(t, SpID)], aes(x = t, y = ba))+
+ggplot(
+  out1[, .(
+    lai = mean(lai),
+    ba = mean(ba),
+    dbh = mean(dbh),
+    nTrs = mean(nTrs)
+    ), by = .(t, SpID)]
+  , aes(x = t, y = ba))+
   geom_line(aes(color = factor(SpID)))
 
 # out1 <- merge(out1, selected_species_pars[,c("spID","species")], by = "spID")
 # 
+nTrs = 60
+dbh = 40
+areaHectar = 1
+(nTrs*3.14159/4*dbh*dbh)/(areaHectar*10000)
+
 # allout1 <- out1[,.(baHectar = mean(baTot)*100), by = .(species, t)]
 # ggplot(allout1, aes(x = t, y = baHectar))+
 #   geom_line(aes(color = species))

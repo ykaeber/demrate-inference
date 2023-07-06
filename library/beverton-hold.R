@@ -106,14 +106,30 @@ data.frame(
   max = c(0.2, 1, 50, 0, 10,0)
 )
 
-set.seed(2)
+set.seed(1)
 sim_df <- beverton_holt(
-  N0 = 0, timesteps = 250, spinup = 0,
-  b0_e = 0.5, b1_e = 0,
-  b0_k = 100, b1_k = 0, 
-  b1_g = 10, b2_g = -0.1,
-  b0_r = inv.plogis(0.0001), b1_recr = 20, b2_recr = -0.2,
-  distP = 0.02, Nrep = 1, opt_x1 = 250)
+  N0 = 0,
+  timesteps = 250,
+  spinup = 10L,
+  b0_e = 0.8,
+  b1_e = 0.0,
+  b0_k = 100,
+  b1_k = 0,
+  b1_g = 5,
+  b2_g = -0.1,
+  b0_r = 30,
+  b1_recr = 0.1,
+  b2_recr = -0.3,
+  distP = 0.02,
+  Nrep = 1,
+  opt_x1 = 250)
+# sim_df <- beverton_holt(
+#   N0 = 0, timesteps = 250, spinup = 0,
+#   b0_e = 0.5, b1_e = 0,
+#   b0_k = 100, b1_k = 0, 
+#   b1_g = 10, b2_g = -0.1,
+#   b0_r = inv.plogis(0.0001), b1_recr = 20, b2_recr = -0.2,
+#   distP = 0.02, Nrep = 1, opt_x1 = 250)
 plot_bh(sim_df)
 tiff("figures/bh-simple.tiff", units = "in", width = 5, height = 5, res = 300, compression = "lzw")
 plot_bh(sim_df)

@@ -7,7 +7,7 @@ using namespace Rcpp;
 double gFolA_f(double kA1, double kA2, double kC1, double kC2, double dbh, double areaHectar) {
   double gFolW = kA1 * exp(kA2 * log(dbh)) * kC1;
   double gFolA = kC2 * gFolW / kC1;
-  gFolA = gFolA / areaHectar / 10000; // 0.01 is the patch size in ha
+  gFolA = gFolA / areaHectar / 10000; // areaHectar is the patch size in ha
   return gFolA / 2;
 }
 
@@ -88,12 +88,7 @@ public:
     data(row, col) = value;
     calculateSums();
   }
-  
-  void add(int row, int col, double value) {
-    data(row, col) += value;
-    calculateSums();
-  }
-  
+
   void updateLAI(List cohorts, List speciesPars, double areaHectar, IntegerVector actualSpecies, CharacterVector outVars){
     NumericVector kA1Vec = as<NumericVector>(speciesPars["kA1"]);
     NumericVector kA2Vec = as<NumericVector>(speciesPars["kA2"]);
@@ -111,7 +106,6 @@ public:
     IntegerVector nTrsVec(actualSpecies.length());
     nTrsVec.fill(0);
     
-    LAI = 0;
     for (int i = 0; i < data.nrow(); i++) {
       data(i, laiIDX) = 0; 
       data(i, dbhIDX) = 0; 
@@ -126,11 +120,11 @@ public:
       double dbh = iCohort["dbh"];
       int nTrs = iCohort["nTrs"];
       double gFolA = gFolA_f(kA1Vec[iSpID], kA2Vec[iSpID], kC1Vec[iSpID], kC2Vec[iSpID], dbh, areaHectar);
-      LAI += gFolA * nTrs;
       
       if(laiIDX != -1) data(spIDX,laiIDX) += gFolA * nTrs;
       if(dbhIDX != -1) data(spIDX,dbhIDX) += dbh*nTrs;
-      if(baIDX != -1) data(spIDX,baIDX) += nTrs*3.14159*std::pow(((dbh/100)/2), 2) * 1 / areaHectar;
+      if(baIDX != -1) data(spIDX,baIDX) += (nTrs*3.14159/4*dbh*dbh)/(areaHectar*10000);
+      // if(baIDX != -1) data(spIDX,baIDX) += nTrs*3.14159*std::pow(((dbh/100)/2), 2) * 1 / (areaHectar*10000);
       
       if(nTrsIDX != -1) {
         data(spIDX, nTrsIDX) += nTrs;
@@ -141,13 +135,24 @@ public:
     if(dbhIDX != -1){
       for (int i = 0; i < data.nrow(); i++) {
         if(nTrsIDX != -1) {
-          data(i, dbhIDX) = data(i, dbhIDX)/data(i, nTrsIDX); 
+          if(data(i, nTrsIDX) > 0){
+            data(i, dbhIDX) = data(i, dbhIDX)/data(i, nTrsIDX);
+          }else{
+            data(i, dbhIDX) = 0;
+          }
         }else{
-          data(i, dbhIDX) = data(i, dbhIDX)/nTrsVec[i]; 
+          if(data(i, nTrsIDX) > 0){
+            data(i, dbhIDX) = data(i, dbhIDX)/nTrsVec[i]; 
+          }else{
+            data(i, dbhIDX) = 0; 
+          }
         }
       }
       }
     calculateSums();
+    LAI = colSums[laiIDX];
+    // Rcpp::Rcout << "====== in updateLAI ======\n";
+    // Rcpp::Rcout << "" << "LAI = " << LAI << "\n";
   }
   
   void calculateSums() {
@@ -171,7 +176,7 @@ public:
   NumericVector getColSums() {
     return colSums;
   }
-  NumericVector getLAI() {
+  double getLAI() {
     return LAI;
   }
 };
@@ -225,6 +230,7 @@ double AL_F(double LAI) {
   return exp(-0.25 * LAI);
 }
 
+// [[Rcpp::export]]
 double shadeF(double LAI, double shadeMean, double shadeSD) {
   double AL = AL_F(LAI);
   double minP = R::pnorm(0, shadeMean, shadeSD, 0, 0);
@@ -349,7 +355,16 @@ List mortality_f(List cohorts, double LAI, double env, double tDist, List pars, 
     double envCond = envF2(envMean, 0.1, env);
     
     double gPSize = 0.1 * pow(D / kDMax, kAlpha);
+    
+    
     double mortP = std::min(1.0 - shadeCond + 1.0 - envCond + gPSize + tDist, 1.0);
+    
+    // Rcpp::Rcout << "====== in Mortfun ======\n";
+    // Rcpp::Rcout << "" << "LAI in Mort = " << LAI << "\n";
+    // Rcpp::Rcout << "" << "shadeCond = " << shadeCond << "\n";
+    // Rcpp::Rcout << "" << "envCond = " << envCond << "\n";
+    // Rcpp::Rcout << "" << "gPSize = " << gPSize << "\n";
+    // Rcpp::Rcout << "" << "tDist = " << tDist << "\n";
     
     int nTrs = iCohort["nTrs"];
     if (nTrs > 0) {
@@ -373,7 +388,8 @@ List mortality_f(List cohorts, double LAI, double env, double tDist, List pars, 
 }
 
 // [[Rcpp::export]]
-void runModel(List pars, List speciesPars) {
+NumericMatrix runModel(List pars, List speciesPars) {
+  startTimer();
   int patchesN = pars["patchesN"];
   double env = pars["env"];
   int timesteps = pars["timesteps"];
@@ -400,10 +416,10 @@ void runModel(List pars, List speciesPars) {
   outMat = repMat(outMat, patchesN);
   
   // start printing
-  for (int i = 0; i < outVars.length(); i++) {
-    Rcpp::Rcout << outVars[i] << " ";
-  }
-    Rcpp::Rcout << "t p\n";
+  // for (int i = 0; i < outVars.length(); i++) {
+  //   Rcpp::Rcout << outVars[i] << " ";
+  // }
+  //   Rcpp::Rcout << "t p\n";
 
   for (int p = 1; p <= patchesN; p++) {
     List cohorts = clone(initCohorts);
@@ -413,15 +429,16 @@ void runModel(List pars, List speciesPars) {
       
       for (int i = 0; i < stateVars.getMatrix().nrow(); i++) {
         for(int j = 1; j < stateVars.getMatrix().ncol(); j++){
-          outMat( (i + ((t-1)*actualSpeciesVec.length()))*(p-1), j) = stateVars.getMatrix()(i, j);
+          outMat( i + (t-1)*actualSpeciesVec.length() + (p-1)*timesteps*actualSpeciesVec.length(), j) = stateVars.getMatrix()(i, j); // FIXME
         }
       }
       
-      //printMatrix(stateVars.getMatrix());
-      //Rcpp::Rcout << "\n\n\n";
+      // printMatrix(stateVars.getMatrix());
+      // Rcpp::Rcout << "\n\n\n";
       
-      //double LAI = stateVars.getLAI()[1];
-      double LAI = 0;
+      double LAI = stateVars.getLAI();
+      // Rcpp::Rcout << "====== in model Iteration ======\n";
+      // Rcpp::Rcout << "" << "LAI in Mort = " << LAI << "\n";
       // if(t==timesteps && p == patchesN) printElapsedTime("finished LAI");
       int tDist = R::rbinom(1, pars["distP"]);
       //double env = 0.5;
@@ -447,5 +464,7 @@ void runModel(List pars, List speciesPars) {
       
     }
   }
-  printMatrix(outMat);
+  printElapsedTime();
+  //printMatrix(outMat);
+  return outMat;
 }
