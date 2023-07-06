@@ -88,22 +88,23 @@ cohortsIN <- list(
 
 
 parsModel <- list(
-  timesteps = 100,
+  timesteps = 1000,
   sampleSteps = 1,
-  outVars = c("SpID", "lai", "nTrs", "dbh", "ba"),
+  outVars = c("spID", "lai", "nTrs", "dbh", "ba"),
   actualSpecies = c(0,13,1,17,5),
   baseReg = 50,
   baseRegP = 0.1,
   bgMort = 2.3,
   distP = 0.01,
   env = 0.7,
-  patchesN = 1,
+  patchesN = 100,
   areaHectar = 0.01,
   initPop = NULL,
+  # initPop = cohortsIN,
   speciesPars = selected_species_pars
 )
 
-# runModel(pars = parsModel, speciesPars = selected_species_pars)
+runModel(pars = parsModel, speciesPars = selected_species_pars)
 # regeneration_f(cohortsIN, 20, 0.7, parsModel, selected_species_pars)
 # cohortsIN = growth_f(cohortsIN, 20, 0.7, parsModel, selected_species_pars)
 # mortality_f(cohortsIN, 20, 0.7, 0, parsModel, selected_species_pars)
@@ -115,16 +116,22 @@ system.time(
 outDT <- data.table(outMat1)
 names(outDT) <- c(parsModel$outVars,"t","p")
 out1 <- outDT
+out1 <- merge(out1, selected_species_pars[,c("spID","species")], by = "spID")
+
+p_dat <- out1[, .(
+  lai = mean(lai),
+  ba = mean(ba),
+  dbh = mean(dbh),
+  nTrs = mean(nTrs)
+), by = .(t, species)]
+
+p_dat <- melt(p_dat, id.vars = c("t", "species"))
 
 ggplot(
-  out1[, .(
-    lai = mean(lai),
-    ba = mean(ba),
-    dbh = mean(dbh),
-    nTrs = mean(nTrs)
-    ), by = .(t, SpID)]
-  , aes(x = t, y = ba))+
-  geom_line(aes(color = factor(SpID)))
+  p_dat
+  , aes(x = t, y = value))+
+  geom_line(aes(color = factor(species)))+
+  facet_wrap(~variable, scales = "free_y")
 
 # out1 <- merge(out1, selected_species_pars[,c("spID","species")], by = "spID")
 # 

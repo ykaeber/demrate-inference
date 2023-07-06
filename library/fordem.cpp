@@ -77,7 +77,7 @@ private:
   NumericMatrix data;
   NumericVector rowSums;
   NumericVector colSums;
-  double LAI;
+  int LAI;
   
 public:
   stateClass(int nrow, int ncol) : data(nrow, ncol), rowSums(nrow), colSums(ncol) {
@@ -115,39 +115,44 @@ public:
     
     for (int i = 0; i < cohorts.size(); i++) {
       List iCohort = cohorts[i];
-      int iSpID = iCohort["spID"];
-      int spIDX = findIntegerIndex(actualSpecies, iSpID);
+      int ispID = iCohort["spID"];
+      int spIDX = findIntegerIndex(actualSpecies, ispID);
       double dbh = iCohort["dbh"];
       int nTrs = iCohort["nTrs"];
-      double gFolA = gFolA_f(kA1Vec[iSpID], kA2Vec[iSpID], kC1Vec[iSpID], kC2Vec[iSpID], dbh, areaHectar);
+      double gFolA = gFolA_f(kA1Vec[ispID], kA2Vec[ispID], kC1Vec[ispID], kC2Vec[ispID], dbh, areaHectar);
+      // heightClassF(,heightClassVec);
+      // LAI[] += gFolA * nTrs;
       
       if(laiIDX != -1) data(spIDX,laiIDX) += gFolA * nTrs;
       if(dbhIDX != -1) data(spIDX,dbhIDX) += dbh*nTrs;
       if(baIDX != -1) data(spIDX,baIDX) += (nTrs*3.14159/4*dbh*dbh)/(areaHectar*10000);
       // if(baIDX != -1) data(spIDX,baIDX) += nTrs*3.14159*std::pow(((dbh/100)/2), 2) * 1 / (areaHectar*10000);
-      
-      if(nTrsIDX != -1) {
-        data(spIDX, nTrsIDX) += nTrs;
-        }else{
-          nTrsVec[nTrsIDX] += nTrs;
-          }
-        }
-    if(dbhIDX != -1){
-      for (int i = 0; i < data.nrow(); i++) {
-        if(nTrsIDX != -1) {
-          if(data(i, nTrsIDX) > 0){
-            data(i, dbhIDX) = data(i, dbhIDX)/data(i, nTrsIDX);
-          }else{
-            data(i, dbhIDX) = 0;
-          }
-        }else{
-          if(data(i, nTrsIDX) > 0){
-            data(i, dbhIDX) = data(i, dbhIDX)/nTrsVec[i]; 
-          }else{
-            data(i, dbhIDX) = 0; 
-          }
+    
+    if(nTrsIDX != -1) {
+      data(spIDX, nTrsIDX) += nTrs;
+      }else{
+        nTrsVec[nTrsIDX] += nTrs;
         }
       }
+    
+    if(dbhIDX != -1){
+        for (int i = 0; i < data.nrow(); i++) {
+          if(nTrsIDX != -1) {
+            if(data(i, nTrsIDX) > 0){
+              data(i, dbhIDX) = data(i, dbhIDX)/data(i, nTrsIDX);
+              data(i, nTrsIDX) = data(i, nTrsIDX)/areaHectar;
+            }else{
+              data(i, dbhIDX) = 0;
+            }
+          }else{
+            if(data(i, nTrsIDX) > 0){
+              data(i, dbhIDX) = data(i, dbhIDX)/nTrsVec[i]; 
+              nTrsVec[i] = nTrsVec[i]/areaHectar;
+            }else{
+              data(i, dbhIDX) = 0; 
+            }
+          }
+        }
       }
     calculateSums();
     LAI = colSums[laiIDX];
@@ -176,7 +181,8 @@ public:
   NumericVector getColSums() {
     return colSums;
   }
-  double getLAI() {
+  double getLAI()  {
+    // return LAI[heightClass];
     return LAI;
   }
 };
@@ -248,11 +254,11 @@ List regeneration_f(List cohorts, double LAI, double env, List pars, List specie
   
   if(R::rbinom(1, baseRegP) == 1){
     for (int i = 0; i < actualSpecies.size(); i++) {
-      int iSpID = actualSpecies[i];
-      double shadeMean = as<NumericVector>(speciesPars["kLy"])[iSpID];
+      int ispID = actualSpecies[i];
+      double shadeMean = as<NumericVector>(speciesPars["kLy"])[ispID];
       double shadeCond = shadeF(LAI, shadeMean, 0.1);
       
-      double envMean = as<NumericVector>(speciesPars["kDDMin"])[iSpID]/1100;
+      double envMean = as<NumericVector>(speciesPars["kDDMin"])[ispID]/1100;
       double envCond = envF2(envMean, 0.1, env);
       
       if (shadeCond * envCond != 0) {
@@ -276,14 +282,14 @@ List regeneration_f(List cohorts, double LAI, double env, List pars, List specie
     }
     
     for (int i = 0; i < actualSpecies.size(); i++) {
-      int iSpID = actualSpecies[i];
+      int ispID = actualSpecies[i];
       if (regTrsMeans[i] > 0) {
         int newTrs = R::rpois(regTrsMeans[i]);
         if (newTrs > 0) {
           newID++;
           cohorts.push_back(List::create(
               _["cohortID"] = newID,
-              _["spID"] = iSpID,
+              _["spID"] = ispID,
               _["nTrs"] = newTrs,
               _["dbh"] = 1
           ));
@@ -307,12 +313,12 @@ List growth_f(List cohorts, double LAI, double env, List pars, List speciesPars)
   for (int i = 0; i < cohorts.size(); i++) {
     List iCohort = cohorts[i];
     double D = iCohort["dbh"];
-    int iSpID = iCohort["spID"];
+    int ispID = iCohort["spID"];
     
-    double kLa = kLaVec[iSpID];
-    double kHMax = kHMaxVec[iSpID];
-    double kG = kGVec[iSpID];
-    double envMean = envMeanVec[iSpID];
+    double kLa = kLaVec[ispID];
+    double kHMax = kHMaxVec[ispID];
+    double kG = kGVec[ispID];
+    double envMean = envMeanVec[ispID];
     
     double kB1 = 137;
     double kE1 = 14 * (kLa / 3 + 3) + 13;
@@ -343,12 +349,12 @@ List mortality_f(List cohorts, double LAI, double env, double tDist, List pars, 
   for (int i = 0; i < cohorts.size(); i++) {
     List iCohort = cohorts[i];
     double D = iCohort["dbh"];
-    int iSpID = iCohort["spID"];
+    int ispID = iCohort["spID"];
     double kAlpha = pars["bgMort"];
     
-    double kDMax = kDMaxVec[iSpID];
-    double shadeMean = shadeMeanVec[iSpID];
-    double envMean = envMeanVec[iSpID];
+    double kDMax = kDMaxVec[ispID];
+    double shadeMean = shadeMeanVec[ispID];
+    double envMean = envMeanVec[ispID];
     
     double shadeCond = shadeF(LAI, shadeMean, 0.1);
     
