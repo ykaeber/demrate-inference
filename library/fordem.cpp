@@ -11,6 +11,19 @@ double gFolA_f(double kA1, double kA2, double kC1, double kC2, double dbh, doubl
   return gFolA / 2;
 }
 
+// [[Rcpp::export]]
+NumericVector revCumSum(NumericVector vec) {
+  int n = vec.size();
+  NumericVector result(n);
+  double sum = 0.0;
+  
+  for (int i = n - 1; i >= 0; i--) {
+    sum += vec[i];
+    result[i] = sum;
+  }
+  
+  return result;
+}
 
 
 // [[Rcpp::export]]
@@ -72,12 +85,45 @@ void printMatrix(const NumericMatrix& mat) {
   }
 }
 
+// [[Rcpp::export]]
+NumericVector createHeightClasses(double Hmax, int heightClassesN) {
+  NumericVector intervals(heightClassesN+1);
+  
+  double intervalSize = Hmax / heightClassesN;
+  
+  intervals[0] = 0;
+  for (int i = 1; i < heightClassesN+1; i++) {
+    intervals[i] = (i) * intervalSize;
+  }
+  
+  return intervals;
+}
+
+// [[Rcpp::export]]
+int getHeightClass(double H, NumericVector intervals) {
+  H = H-0.00001;
+  int intervalIndex = -1;
+  int numIntervals = intervals.size() - 1;
+  
+  for (int i = 0; i < numIntervals; i++) {
+    if (H >= intervals[i] && H < intervals[i + 1]) {
+      intervalIndex = i;
+      break;
+    }
+  }
+  
+  return intervalIndex;
+}
+
+
 class stateClass {
 private:
   NumericMatrix data;
   NumericVector rowSums;
   NumericVector colSums;
-  int LAI;
+  // int LAI;
+  NumericVector laiVec;
+  NumericVector heightClassesVec;
   
 public:
   stateClass(int nrow, int ncol) : data(nrow, ncol), rowSums(nrow), colSums(ncol) {
@@ -89,7 +135,7 @@ public:
     calculateSums();
   }
 
-  void updateLAI(List cohorts, List speciesPars, double areaHectar, IntegerVector actualSpecies, CharacterVector outVars){
+  void updateLAI(List cohorts, List speciesPars, double areaHectar, IntegerVector actualSpecies, CharacterVector outVars, List pars){
     NumericVector kA1Vec = as<NumericVector>(speciesPars["kA1"]);
     NumericVector kA2Vec = as<NumericVector>(speciesPars["kA2"]);
     NumericVector kC1Vec = as<NumericVector>(speciesPars["kC1"]);
@@ -113,15 +159,31 @@ public:
       data(i, baIDX) = 0; 
     }
     
+    
+    double maxH = 0;
+    for (int i = 0; i < cohorts.size(); i++) {
+      List iCohort = cohorts[i];
+      int H = iCohort["H"];
+      if(H > maxH) maxH = H;
+    }
+    heightClassesVec = createHeightClasses(maxH, pars["heightClassesN"]);
+    
+    NumericVector laiVecTemp(heightClassesVec.size());
     for (int i = 0; i < cohorts.size(); i++) {
       List iCohort = cohorts[i];
       int ispID = iCohort["spID"];
       int spIDX = findIntegerIndex(actualSpecies, ispID);
       double dbh = iCohort["dbh"];
       int nTrs = iCohort["nTrs"];
+      
+      
       double gFolA = gFolA_f(kA1Vec[ispID], kA2Vec[ispID], kC1Vec[ispID], kC2Vec[ispID], dbh, areaHectar);
       // heightClassF(,heightClassVec);
       // LAI[] += gFolA * nTrs;
+      
+      double H = iCohort["H"];
+      int heightClass = getHeightClass(H, heightClassesVec);
+      laiVecTemp[heightClass] += gFolA * nTrs;
       
       if(laiIDX != -1) data(spIDX,laiIDX) += gFolA * nTrs;
       if(dbhIDX != -1) data(spIDX,dbhIDX) += dbh*nTrs;
@@ -155,7 +217,8 @@ public:
         }
       }
     calculateSums();
-    LAI = colSums[laiIDX];
+    //LAI = colSums[laiIDX];
+    laiVec = revCumSum(laiVecTemp);
     // Rcpp::Rcout << "====== in updateLAI ======\n";
     // Rcpp::Rcout << "" << "LAI = " << LAI << "\n";
   }
@@ -181,9 +244,14 @@ public:
   NumericVector getColSums() {
     return colSums;
   }
-  double getLAI()  {
-    // return LAI[heightClass];
-    return LAI;
+  double getLAI(int heightClass)  {
+    return laiVec[heightClass];
+  }
+  NumericVector getLAIVec()  {
+    return laiVec;
+  }
+  NumericVector getHeightClassesVec(){
+    return heightClassesVec;
   }
 };
 
@@ -302,8 +370,36 @@ List regeneration_f(List cohorts, double LAI, double env, List pars, List specie
 }
 
 
+
 // [[Rcpp::export]]
-List growth_f(List cohorts, double LAI, double env, List pars, List speciesPars) {
+List updateH(List cohorts, List pars, List speciesPars){
+  NumericVector kLaVec = as<NumericVector>(speciesPars["kLa"]); // 1
+  NumericVector kHMaxVec = as<NumericVector>(speciesPars["kHMax"])*100; // 1
+  
+  cohorts = clone(cohorts);
+  for (int i = 0; i < cohorts.size(); i++) {
+    List iCohort = cohorts[i];
+    double D = iCohort["dbh"];
+    int ispID = iCohort["spID"];
+    
+    double kLa = kLaVec[ispID];
+    double kHMax = kHMaxVec[ispID];
+    
+    double kB1 = 137;
+    double kE1 = 14 * (kLa / 3 + 3) + 13;
+    double kSMin = 1.3 * (kLa / 3 + 3) + 39.5;
+    double kSIn = kSMin + 0.75 * kE1;
+    
+    double H = kB1 + (kHMax - kB1) * (1 - exp(-kSIn * D / (kHMax - kB1)));
+    
+    iCohort["H"] = H;
+    cohorts[i] = iCohort;
+  }
+  return cohorts;
+}
+
+// [[Rcpp::export]]
+List growth_f(List cohorts, NumericVector laiVec, double env, List pars, List speciesPars, NumericVector heightClassesVec) {
   NumericVector kLaVec = as<NumericVector>(speciesPars["kLa"]);
   NumericVector kHMaxVec = as<NumericVector>(speciesPars["kHMax"])*100;
   NumericVector kGVec = as<NumericVector>(speciesPars["kG"]);
@@ -315,6 +411,10 @@ List growth_f(List cohorts, double LAI, double env, List pars, List speciesPars)
     double D = iCohort["dbh"];
     int ispID = iCohort["spID"];
     
+    double H = iCohort["H"];
+    int heightClass = getHeightClass(H, heightClassesVec);
+    double LAI = laiVec[heightClass];
+    
     double kLa = kLaVec[ispID];
     double kHMax = kHMaxVec[ispID];
     double kG = kGVec[ispID];
@@ -323,9 +423,7 @@ List growth_f(List cohorts, double LAI, double env, List pars, List speciesPars)
     double kB1 = 137;
     double kE1 = 14 * (kLa / 3 + 3) + 13;
     double kSMin = 1.3 * (kLa / 3 + 3) + 39.5;
-    double kSIn = kSMin + 0.75 * kE1;
     
-    double H = kB1 + (kHMax - kB1) * (1 - exp(-kSIn * D / (kHMax - kB1)));
     double AL = AL_F(LAI);
     double gS = kSMin + kE1 * (1.0 - AL);
     double gFun = std::max(0.0, gS * (1 - (H - kB1) / (kHMax - kB1)));
@@ -340,7 +438,7 @@ List growth_f(List cohorts, double LAI, double env, List pars, List speciesPars)
 }
 
 // [[Rcpp::export]]
-List mortality_f(List cohorts, double LAI, double env, double tDist, List pars, List speciesPars) {
+List mortality_f(List cohorts, NumericVector laiVec, double env, double tDist, List pars, List speciesPars, NumericVector heightClassesVec) {
   NumericVector kDMaxVec = as<NumericVector>(speciesPars["kDMax"]);
   NumericVector shadeMeanVec = as<NumericVector>(speciesPars["kLy"]);
   NumericVector envMeanVec = as<NumericVector>(speciesPars["kDDMin"])/1100;
@@ -351,6 +449,10 @@ List mortality_f(List cohorts, double LAI, double env, double tDist, List pars, 
     double D = iCohort["dbh"];
     int ispID = iCohort["spID"];
     double kAlpha = pars["bgMort"];
+    
+    double H = iCohort["H"];
+    int heightClass = getHeightClass(H, heightClassesVec);
+    double LAI = laiVec[heightClass];
     
     double kDMax = kDMaxVec[ispID];
     double shadeMean = shadeMeanVec[ispID];
@@ -431,7 +533,10 @@ NumericMatrix runModel(List pars, List speciesPars) {
     List cohorts = clone(initCohorts);
     for (int t = 1; t <= timesteps; t++) {
       // startTimer();
-      stateVars.updateLAI(cohorts, speciesPars, areaHectar, actualSpeciesVec, outVars);
+      cohorts = updateH(cohorts, pars, speciesPars);
+      // Rcpp::Rcout << "updateH worked\n";
+      stateVars.updateLAI(cohorts, speciesPars, areaHectar, actualSpeciesVec, outVars,  pars);
+      // Rcpp::Rcout << "updateLAI worked\n";
       
       for (int i = 0; i < stateVars.getMatrix().nrow(); i++) {
         for(int j = 1; j < stateVars.getMatrix().ncol(); j++){
@@ -442,21 +547,24 @@ NumericMatrix runModel(List pars, List speciesPars) {
       // printMatrix(stateVars.getMatrix());
       // Rcpp::Rcout << "\n\n\n";
       
-      double LAI = stateVars.getLAI();
       // Rcpp::Rcout << "====== in model Iteration ======\n";
       // Rcpp::Rcout << "" << "LAI in Mort = " << LAI << "\n";
       // if(t==timesteps && p == patchesN) printElapsedTime("finished LAI");
       int tDist = R::rbinom(1, pars["distP"]);
       //double env = 0.5;
       
-      cohorts = regeneration_f(cohorts, LAI, env, pars, speciesPars);
       // if(t==timesteps && p == patchesN) printElapsedTime("finished regeneration / start growth");
       // startTimer();
-      cohorts = growth_f(cohorts, LAI, env, pars, speciesPars);
+      cohorts = growth_f(cohorts, stateVars.getLAIVec(), env, pars, speciesPars, stateVars.getHeightClassesVec());
+      // Rcpp::Rcout << "growth worked\n";
       // if(t==timesteps && p == patchesN) printElapsedTime("finished growth / start mortality");
       // startTimer();
-      cohorts = mortality_f(cohorts, LAI, env, tDist, pars, speciesPars);
+      cohorts = mortality_f(cohorts, stateVars.getLAIVec(), env, tDist, pars, speciesPars, stateVars.getHeightClassesVec());
+      // Rcpp::Rcout << "mortality worked\n";
+      
       // if(t==timesteps && p == patchesN) printElapsedTime("finished mortality / start calculateMeansAndSums");
+      cohorts = regeneration_f(cohorts, stateVars.getLAI(0), env, pars, speciesPars);
+      // Rcpp::Rcout << "regeneration worked\n";
       
       // startTimer();
       //out_df = calculateMeansAndSums(cohorts, t, p, pars);

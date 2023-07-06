@@ -67,8 +67,13 @@ data.frame(
 
 sourceCpp("library/fordem.cpp")
 sourceCpp("library/funtest.cpp")
-testDist(100, 0.5)
+heightClassVec <- createIntervals(100, 3)
 
+createIntervals(1, 3)
+
+getIntervalIndex(100, heightClassVec)
+
+reverseCumulativeSum(c(5,4,1))
 
 cohortsIN <- list(
   list(
@@ -86,7 +91,6 @@ cohortsIN <- list(
 )
 
 
-
 parsModel <- list(
   timesteps = 1000,
   sampleSteps = 1,
@@ -99,10 +103,15 @@ parsModel <- list(
   env = 0.7,
   patchesN = 100,
   areaHectar = 0.01,
+  heightClassesN = 10,
   initPop = NULL,
   # initPop = cohortsIN,
   speciesPars = selected_species_pars
 )
+
+updateH(NULL, pars = parsModel, speciesPars = selected_species_pars)
+
+growth_f(cohortsIN, 20, 0.7, parsModel, selected_species_pars)
 
 runModel(pars = parsModel, speciesPars = selected_species_pars)
 # regeneration_f(cohortsIN, 20, 0.7, parsModel, selected_species_pars)
