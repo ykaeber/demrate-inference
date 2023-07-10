@@ -75,26 +75,29 @@ sim_df <- beverton_holt(N0 = 10, timesteps = 500,
 #sim_df <- aggregate(. ~ t, data = sim_df, mean, na.rm = TRUE)
 
 plot_bh <- function(sim_df){
-  par(mfrow =c(3,1),mar=c(4,4,0.5,0.5))
+  par(mfrow =c(3,1),mar=c(2,4,1.2,1))
   plot(N~t, data = sim_df, type = "l")
+  title("a)", adj = 0, line = 0.4, cex = 10)
   abline(h = 100)
   abline(v = sim_df[sim_df$disturbance == 0,]$t, col = "orange", lty = 2)
   legend("bottomright",legend = c("disturbance"), 
          col = c("orange"), lty = 2, lwd = c(2), cex = 0.7)
   # abline(v = c(seq(0,nrow(sim_df), 100)), col = "grey50", lty = 2)
-  plot(actualR~t, data = sim_df, type = "l", ylim = c(-0.3,3), lwd = 2)
+  plot(actualR~t, data = sim_df, type = "l", ylim = c(-0.3,3), lwd = 2, ylab = "rate")
+  title("b)", adj = 0, line = 0.4, cex = 10)
   # abline(v = c(seq(0,nrow(sim_df), 100)), col = "grey50", lty = 2)
   abline(v = sim_df[sim_df$disturbance == 0,]$t, col = "orange", lty = 2)
   lines(g~t, data = sim_df, col = "blue")
   lines(recr_mean~t, data = sim_df, col = "green")
-  lines(K~t, data = sim_df, col = "red")
+  #lines(K~t, data = sim_df, col = "red")
   
-  legend("topright",legend = c("actual rate of change","growth","recr","K"), 
-         col = c("black","blue","green","red"), lty = 1, lwd = c(2,1,1,1), cex = 0.7)
+  legend("topright",legend = c("actual rate of change","growth","r mean"), 
+         col = c("black","blue","green"), lty = 1, lwd = c(2,1,1,1), cex = 0.7)
   legend("bottomright",legend = c("disturbance"), 
          col = c("orange"), lty = 2, lwd = c(2), cex = 0.7)
-  
-  plot(recr~t, data = sim_df, type = "l", lwd = 2, col = "green")
+  par(mar=c(4,4,1.2,1))
+  plot(recr~t, data = sim_df, type = "l", lwd = 2, col = "green", ylab = "rpois(r)")
+  title("c)", adj = 0, line = 0.4, cex = 10)
 }
 data.frame(
   par = c("distP", "b0_e","b1_recr", "b2_recr", "b1_g","b2_g"),
@@ -103,14 +106,18 @@ data.frame(
   max = c(0.2, 1, 50, 0, 10,0)
 )
 
-
+set.seed(2)
 sim_df <- beverton_holt(
-  N0 = 0, timesteps = 200, spinup = 50,
+  N0 = 0, timesteps = 250, spinup = 0,
   b0_e = 0.5, b1_e = 0,
   b0_k = 100, b1_k = 0, 
   b1_g = 10, b2_g = -0.1,
   b0_r = inv.plogis(0.0001), b1_recr = 20, b2_recr = -0.2,
   distP = 0.02, Nrep = 1, opt_x1 = 250)
 plot_bh(sim_df)
+tiff("figures/bh-simple.tiff", units = "in", width = 5, height = 5, res = 300, compression = "lzw")
+plot_bh(sim_df)
+dev.off()
+
 inv.plogis(0)
 head(1)
