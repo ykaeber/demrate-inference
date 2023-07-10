@@ -4,6 +4,11 @@
 ## Date:
 ## Author:
 ################################################################################
+library("Rcpp")
+library(data.table)
+library(ggplot2)
+sourceCpp("library/fordem.cpp")
+
 selected_species_pars <- 
 data.frame(
   stringsAsFactors = FALSE,
@@ -36,6 +41,11 @@ data.frame(
              610L,1011L,1062L,1042L,898L,898L,610L,272L,610L,
              898L,1237L,898L,723L,980L,662L,610L,785L,1011L,
              1042L,1062L,898L,498L,1339L,1339L,1062L),
+  kDrTol = c(0.23,0.25,0.15,
+             0.3,0.37,0.37,0.23,0.33,0.25,0.25,0.08,0.08,
+             0.16,0.16,0.25,0.33,0.33,0.25,0.16,0.08,
+             0.25,0.33,0.33,0.25,0.08,0.33,0.33,0.33,0.25,
+             0.25),
   kLy = c(0.03,0.5,0.05,0.075,0.5,
           0.4,0.03,0.2,0.075,0.05,0.2,0.2,0.3,0.5,0.075,0.1,
           0.2,0.03,0.075,0.3,0.3,0.2,0.3,0.2,0.3,0.3,
@@ -60,45 +70,63 @@ data.frame(
           12L,12L,12L,12L,12L,12L,12L,12L,12L,12L,12L)
 )
 
-
-cohortsIN <- list(
-  list(
-    cohortID = 1,
-    spID = 1,
-    nTrs = 1,
-    dbh = 1
-  ),
-  list(
-    cohortID = 2,
-    spID = 17,
-    nTrs = 4,
-    dbh = 30
-  )
-)
-
-parsModel <- list(
-  timesteps = 500,
-  actualSpecies = c(0,13,1,17,5),
-  baseReg = 10,
-  bgMort = 2.3,
-  distP = 0.01,
-  env = 0.7,
-  patchesN = 10,
-  areaHectar = 0.01,
-  initPop = cohortsIN,
-  speciesPars = selected_species_pars
-)
-
-library("Rcpp")
 sourceCpp("library/fordem.cpp")
-system.time(
-runModel(pars = parsModel, speciesPars = selected_species_pars)
-)
-system.time(
-  out <- capture.output(
-    runModel(pars = parsModel, speciesPars = selected_species_pars)
+
+# sourceCpp("library/funtest.cpp")
+# cohortsIN <- list(
+#   # list(
+#   #   cohortID = 1,
+#   #   spID = 1,
+#   #   nTrs = 1,
+#   #   dbh = 1
+#   # ),
+#   list(
+#     cohortID = 2,
+#     spID = 17,
+#     nTrs = 5,
+#     dbh = 50
+#   ),
+#   list(
+#     cohortID = 2,
+#     spID = 17,
+#     nTrs = 5,
+#     dbh = 10
+#   )
+# )
+
+selected_species_pars <- data.table(selected_species_pars)
+selected_species_pars[, env := scale(kDDMin), ]
+selected_species_pars[, env := scale(-kDrTol), ]
+
+selected_species_pars[, env := scale(-kDrTol)*scale(kDDMin), ]
+selected_species_pars[, env := env+abs(min(env)), ]
+selected_species_pars[, env := env/max(env), ]
+
+sourceCpp("library/fordem.cpp")
+  parsModel <- list(
+    timesteps = 500,
+    sampleSteps = 1,
+    outVars = c("spID", "lai", "nTrs", "dbh", "ba"),
+    actualSpecies = c(0,2,13,1,17,5),
+    # actualSpecies = selected_species_pars$spID,
+    baseReg = 200/0.01,
+    baseRegP = 0.1,
+    bgMort = 2.3,
+    distP = 0.00,
+    env = 0.4,
+    # env = 0.7,
+    patchesN = 200,
+    areaHectar = 0.01,
+    heightClassesN = 10,
+    initPop = NULL,
+    # initPop = cohortsIN,
+    speciesPars = selected_species_pars
   )
+
+system.time(
+  outMat1 <- runModel(pars = parsModel, speciesPars = selected_species_pars)
 )
+<<<<<<< HEAD
 library(jointprof)
 out_file <- tempfile("jointprof", fileext = ".out", tmpdir = ".")
 start_profiler(out_file)
@@ -108,24 +136,33 @@ out <- capture.output(
 stop_profiler()
 
 out1 <- fread(paste0(out, collapse = "\n") )
+=======
+outDT <- data.table(outMat1)
+names(outDT) <- c(parsModel$outVars,"t","p")
+out1 <- outDT
+>>>>>>> 5d1de56fd276b8f8ca9c9e9482506933100cebfe
 out1 <- merge(out1, selected_species_pars[,c("spID","species")], by = "spID")
 
-allout1 <- out1[,.(baHectar = mean(baTot)*100), by = .(species, t)]
-ggplot(allout1, aes(x = t, y = baHectar))+
-  geom_line(aes(color = species))
+p_dat <- out1[, .(
+  lai = mean(lai),
+  ba = mean(ba),
+  dbh = mean(dbh),
+  nTrs = mean(nTrs)
+), by = .(t, species)]
+p_dat_allSP <- p_dat[, .(
+  lai = sum(lai),
+  ba = sum(ba),
+  dbh = mean(dbh),
+  nTrs = sum(nTrs),
+  species = "all"
+), by = .(t)]
 
+p_dat <- melt(p_dat, id.vars = c("t", "species"))
+p_dat_allSP <- melt(p_dat_allSP, id.vars = c("t", "species"))
 
-hist(out1$baHectar)
-
-ggplot(out1, aes(x = t, y = baHectar))+
-  geom_line(aes(color = species, group = factor(p)), alpha = 0.5)
-
-ggplot(out1, aes(x = t, y = nTrsSum*dbhMean))+
-  geom_line(aes(color = species))
-
-
-
-ggplot(out1, aes(x = t, y = 100*nTrsSum*pi*(((dbhMean/100)/2)^2)))+
-  geom_line(aes(color = species))
-
+ggplot(
+  p_dat, aes(x = t, y = value))+
+  geom_line(aes(color = factor(species)))+
+  geom_line(data = p_dat_allSP, linetype = 2)+
+  facet_wrap(~variable, scales = "free_y")
 
