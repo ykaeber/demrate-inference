@@ -72,6 +72,26 @@ data.frame(
 
 sourceCpp("library/fordem.cpp")
 
+# lai1 = seq(0,30, 0.2)
+# 
+# plot(lai1, sapply(lai1, function(x) shadeF(x, 0.3, 0.1)))
+# plot(lai1, sapply(lai1, function(x) shadeF(x, 0.1, 0.1)))
+# 
+# x = seq(0,1,0.01)
+# 
+# gGRF = envF(envMean, 0.1, env, widthPar)
+# gGRF2 = 1 - pow(1- gGRF,4)
+# 
+# plot(x, sapply(x, function(x) envF2(0.5, 0.7, x)), ylim = c(0,1))
+# abline(v = 0.5)
+# 
+# f1 <- function(x1) 1 - (1- x1)^4
+# plot(x, sapply(x, function(x) f1(envF2(0.5, 0.1, x))))
+# abline(v = 0.5)
+# 
+# 
+# plot(x, 0.2*(1-x)^3)
+
 # sourceCpp("library/funtest.cpp")
 # cohortsIN <- list(
 #   # list(
@@ -94,11 +114,12 @@ sourceCpp("library/fordem.cpp")
 #   )
 # )
 
+
 selected_species_pars <- data.table(selected_species_pars)
 selected_species_pars[, env := scale(kDDMin), ]
-selected_species_pars[, env := scale(-kDrTol), ]
+# selected_species_pars[, env := scale(-kDrTol), ]
+# selected_species_pars[, env := scale(kDrTol)*scale(kDDMin), ]
 
-selected_species_pars[, env := scale(-kDrTol)*scale(kDDMin), ]
 selected_species_pars[, env := env+abs(min(env)), ]
 selected_species_pars[, env := env/max(env), ]
 
@@ -107,17 +128,23 @@ sourceCpp("library/fordem.cpp")
     timesteps = 500,
     sampleSteps = 1,
     outVars = c("spID", "lai", "nTrs", "dbh", "ba"),
-    actualSpecies = c(0,2,13,1,17,5),
+    actualSpecies = c(0,2,13,1,17,5, 27),
     # actualSpecies = selected_species_pars$spID,
-    baseReg = 200/0.01,
-    baseRegP = 0.1,
+    baseReg = 50/0.1, # range: 1/0.1 to 5000/0.1
+    baseRegP = 0.1, # (optional for inference) range 0.01 to 1
+    regEnvEff = 1, # range 0 to 10
+    regShadeEff = 1, # range 0 to 10
+    mortEnvEff = 0.2, # range 0 to 10
+    mortShadeEff = 1, # range 0 to 10
     bgMort = 2.3,
-    distP = 0.00,
-    env = 0.4,
+    distP = 0.01, # range 0 to 0.2
+    distInt = 0.01, # (fraction of patches affected) range 0 to 1
+    env = 0.4, # range 0 to 1
+    nicheWidth = 4,
     # env = 0.7,
-    patchesN = 200,
-    areaHectar = 0.01,
-    heightClassesN = 10,
+    patchesN = 100,
+    areaHectar = 0.1,
+    heightClassesN = 50,
     initPop = NULL,
     # initPop = cohortsIN,
     speciesPars = selected_species_pars

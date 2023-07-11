@@ -154,19 +154,23 @@ double gFolA_f(double kA1, double kA2, double kC1, double kC2, double dbh, doubl
 }
 
 // [[Rcpp::export]]
-double envF(double envMean, double envSD, double env) {
+double envF(double envMean, double envSD, double env, double widthPar) {
   double maxDens = R::dnorm(envMean, envMean, envSD, 0);
   double pDens = R::dnorm(env, envMean, envSD, 0);
-  return pDens / maxDens;
+  double envCond = pDens / maxDens;
+  envCond = 1 - pow(1-envCond, widthPar);
+  return envCond;
 }
 
 // [[Rcpp::export]]
-double envF2(double envMean, double envSD, double env) {
+double envF2(double envMean, double envSD, double env, double widthPar) {
   double maxDens = R::dnorm(envMean, envMean, envSD, 0);
   double pDens = R::dnorm(env, envMean, envSD, 0);
   if(envMean < env){
     pDens = maxDens;
   }
+  double envCond = pDens / maxDens;
+  envCond = 1 - pow(1-envCond, widthPar);
   return pDens / maxDens;
 }
 
@@ -333,18 +337,29 @@ List regeneration_f(List cohorts, double LAI, double env, List pars, List specie
   double baseReg = pars["baseReg"];
   baseReg = baseReg*areaHectar;
   double baseRegP = pars["baseRegP"];
+  double nicheWidth = pars["nicheWidth"];
+  double regShadeEff = pars["regShadeEff"];
+  double regEnvEff = pars["regEnvEff"];
+  
   
   if(R::rbinom(1, baseRegP) == 1){
     for (int i = 0; i < actualSpecies.size(); i++) {
       int ispID = actualSpecies[i];
+      
       double shadeMean = as<NumericVector>(speciesPars["kLy"])[ispID];
       double shadeCond = shadeF(LAI, shadeMean, 0.1);
-      
+      double regShadeShape = 3;
+      shadeCond = regShadeEff*pow(shadeCond, regShadeShape);
+        
       double envMean = as<NumericVector>(speciesPars["env"])[ispID];
-      double envCond = envF(envMean, 0.1, env);
+      double envCond = envF(envMean, 0.1, env, nicheWidth);
+      double regEnvShape = 3;
+      envCond = regEnvEff*pow(envCond, regEnvShape);      
       
-      if (shadeCond * envCond != 0) {
-        regP[i] = std::min(shadeCond*envCond, 1.0);
+      double regCond = envCond*shadeCond;
+      
+      if (regCond != 0) {
+        regP[i] = std::min(regCond, 1.0);
       } else {
         regP[i] = 0;
       }
@@ -400,6 +415,7 @@ List growth_f(List cohorts, NumericVector laiVec, double env, List pars, List sp
     List iCohort = cohorts[i];
     double D = iCohort["dbh"];
     int ispID = iCohort["spID"];
+    double nicheWidth = pars["nicheWidth"];
     
     double H = iCohort["H"];
     int heightClass = getHeightClass(H, heightClassesVec);
@@ -418,7 +434,7 @@ List growth_f(List cohorts, NumericVector laiVec, double env, List pars, List sp
     double gS = kSMin + kE1 * (1.0 - AL);
     double gFun = std::max(0.0, gS * (1 - (H - kB1) / (kHMax - kB1)));
     
-    double gGRF = envF(envMean, 0.1, env);
+    double gGRF = envF(envMean, 0.1, env, nicheWidth);
     double gGRF2 = 1 - pow(1- gGRF,4);
     double gRateD = std::max(0.0, gGRF2 * kG * D * (1 - H / kHMax) / (2 * H + gFun * D));
     
@@ -446,6 +462,10 @@ List mortality_f(List cohorts, NumericVector laiVec, double env, double tDist, L
     double D = iCohort["dbh"];
     int ispID = iCohort["spID"];
     double kAlpha = pars["bgMort"];
+    double nicheWidth = pars["nicheWidth"];
+    double mortEnvEff = pars["mortEnvEff"];
+    double mortShadeEff = pars["mortShadeEff"];
+    
     
     double H = iCohort["H"];
     int heightClass = getHeightClass(H, heightClassesVec);
@@ -457,16 +477,19 @@ List mortality_f(List cohorts, NumericVector laiVec, double env, double tDist, L
     
     // shade dependent mortality
     double shadeCond = shadeF(LAI, shadeMean, 0.1);
+    double mortShadeShape = 3;
+    double gPShade = mortShadeEff*pow(1-shadeCond, mortShadeShape);
     
     // environment dependent mortality
-    double envCond = envF(envMean, 0.1, env);
-    double gPEnv = 0.2*pow(1-envCond, kAlpha);
+    double envCond = envF(envMean, 0.1, env, nicheWidth);
+    double mortEnvShape = 3;
+    double gPEnv = mortEnvEff*pow(1-envCond, mortEnvShape);
     
     // size dependent mortality
     double gPSize = 0.1 * pow(D / kDMax, kAlpha);
     
     
-    double mortP = std::min(1.0 - shadeCond + gPEnv + gPSize + tDist, 1.0);
+    double mortP = std::min(gPShade + gPEnv + gPSize + tDist, 1.0);
     
 
     int nTrs = iCohort["nTrs"];
@@ -501,6 +524,7 @@ NumericMatrix runModel(List pars, List speciesPars) {
   double env = pars["env"];
   int timesteps = pars["timesteps"];
   double areaHectar = pars["areaHectar"];
+  double distInt = pars["distInt"];
   List initCohorts = pars["initPop"];
   IntegerVector actualSpeciesVec = pars["actualSpecies"];
   DataFrame out_df;
@@ -520,8 +544,19 @@ NumericMatrix runModel(List pars, List speciesPars) {
   outMat = repMat(outMat, timesteps);
   outMat = repMat(outMat, patchesN);
   
+  IntegerMatrix distMat(timesteps, patchesN);
+  for(int t = 1; t <= timesteps; t++){
+    int tDist = R::rbinom(1, pars["distP"]);
+    int distPatchesN = roundToDecimal(patchesN*distInt,0);
+    IntegerVector distPatches = sample(patchesN, distPatchesN); // given
+    for(int p = 1; p <= patchesN; p++){
+      if(findIntegerIndex(distPatches, p) != -1) distMat(t, p) = tDist;
+    }
+  }
+  
   for (int p = 1; p <= patchesN; p++) {
     List cohorts = clone(initCohorts);
+    
     for (int t = 1; t <= timesteps; t++) {
       // Rcpp::Rcout << "######################### t = "<<t  << "\n";
       // startTimer();
@@ -536,7 +571,8 @@ NumericMatrix runModel(List pars, List speciesPars) {
         }
       }
       
-      int tDist = R::rbinom(1, pars["distP"]);
+      //int tDist = R::rbinom(1, pars["distP"]);
+      int tDist = distMat(t, p);
       cohorts = growth_f(cohorts, stateVars.getLAIVec(), env, pars, speciesPars, stateVars.getHeightClassesVec());
       cohorts = mortality_f(cohorts, stateVars.getLAIVec(), env, tDist, pars, speciesPars, stateVars.getHeightClassesVec());
       cohorts = regeneration_f(cohorts, stateVars.getLAI(0), env, pars, speciesPars);
