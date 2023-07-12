@@ -576,9 +576,9 @@ NumericMatrix runModel(List pars, List speciesPars) {
     IntegerVector distPatches = sample(patchesN, distPatchesN); // given
     for(int p = 1; p <= patchesN; p++){
       if(findIntegerIndex(distPatches, p) != -1){
-        distMat(t, p) = tDist;
+        distMat(t, p-1) = tDist;
       }else {
-        distMat(t, p) = 0;
+        distMat(t, p-1) = 0;
       }
     }
   }
