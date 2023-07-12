@@ -575,7 +575,11 @@ NumericMatrix runModel(List pars, List speciesPars) {
     int distPatchesN = roundToDecimal(patchesN*distInt,0);
     IntegerVector distPatches = sample(patchesN, distPatchesN); // given
     for(int p = 1; p <= patchesN; p++){
-      if(findIntegerIndex(distPatches, p) != -1) distMat(t, p) = tDist;
+      if(findIntegerIndex(distPatches, p) != -1){
+        distMat(t, p) = tDist;
+      }else {
+        distMat(t, p) = 0;
+      }
     }
   }
   
