@@ -573,6 +573,7 @@ NumericMatrix runModel(List pars, List speciesPars) {
   for(int t = 1; t <= timesteps; t++){
     int tDist = R::rbinom(1, pars["distP"]);
     int distPatchesN = roundToDecimal(patchesN*distInt,0);
+    if(distPatchesN > patchesN) distPatchesN = distPatchesN - 1;
     IntegerVector distPatches = sample(patchesN, distPatchesN); // given
     for(int p = 1; p <= patchesN; p++){
       if(findIntegerIndex(distPatches, p) != -1) distMat(t, p) = tDist;
