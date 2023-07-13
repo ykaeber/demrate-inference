@@ -153,6 +153,11 @@ sourceCpp("library/fordem.cpp")
 system.time(
   outMat1 <- runModel(pars = parsModel, speciesPars = selected_species_pars)
 )
+
+
+
+
+
 outDT <- data.table(outMat1)
 names(outDT) <- c(parsModel$outVars,"t","p")
 out1 <- outDT
@@ -173,7 +178,11 @@ p_dat_allSP <- p_dat[, .(
 ), by = .(t)]
 
 p_dat <- melt(p_dat, id.vars = c("t", "species"))
+
+
+
 p_dat_allSP <- melt(p_dat_allSP, id.vars = c("t", "species"))
+p_dat_allSP[p_dat_allSP$variable == "ba",]
 
 ggplot(
   p_dat, aes(x = t, y = value))+

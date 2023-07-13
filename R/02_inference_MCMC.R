@@ -6,12 +6,12 @@ sourceCpp("library/beverton-hold.cpp")
 data =
   lapply(1:1000, function(i) {
     
-    distP = runif(1, 0, 0.2)
-    b0_e = runif(1, 0, 1.0) 
-    b1_recr = runif(1, 0, 50)
-    b2_recr = runif(1, -5, 0.0)
-    b1_g = runif(1, 0, 1.0)
-    b2_g = runif(1, -5, 0)
+    distP = ifelse(0L,     runif(1, 0, 0.2), 0.01)
+    b0_e = ifelse(0L,       runif(1, 0, 1.0), 0.5)
+    b1_recr = ifelse(1L, runif(1, 0, 50), 20)
+    b2_recr = ifelse(1L, runif(1, -5, 0.0), -0.2)
+    b1_g = ifelse(0L,       runif(1, 0, 1.0), 3)
+    b2_g = ifelse(0L,       runif(1, -5, 0), -0.1)
     
     data_tmp =  beverton_holt(N0 = 10,
                               timesteps = 510,
@@ -59,16 +59,16 @@ results = parLapply(cl, 1:nrow(data), function(KK) {
         data_tmp =  beverton_holt(N0 = 10, 
                                   timesteps = 510, 
                                   spinup = 10L, 
-                                  b0_e = par[2], 
+                                  b0_e = 0.05, 
                                   b1_e = 0.0,
                                   b0_k = 100, 
                                   b1_k = 4.9, 
-                                  b1_g = par[5], 
-                                  b2_g = par[6],
+                                  b1_g = 3, 
+                                  b2_g = -3,
                                   b0_r = 30, 
-                                  b1_recr = par[3], 
-                                  b2_recr = par[4], 
-                                  distP = par[1], 
+                                  b1_recr = par[1], 
+                                  b2_recr = par[2], 
+                                  distP = 0.01, 
                                   Nrep = 1, 
                                   opt_x1 = 250)$N
         sum((data_tmp-obs)**2)/500
@@ -76,7 +76,9 @@ results = parLapply(cl, 1:nrow(data), function(KK) {
     return(-mean(ll))
   }
   
-  bs = createBayesianSetup(logLik, prior = createUniformPrior(c(0,0,0,-5,0,-5), c(0.2, 1.0, 50, 0.0, 1.0, 0)))
+  bs = createBayesianSetup(logLik, prior = createUniformPrior(c(0,-5), c(50, 0.0)))
+  #bs = createBayesianSetup(logLik, prior = createUniformPrior(c(0,0,0,-5,0,-5), c(0.2, 1.0, 50, 0.0, 1.0, 0)))
+  
   res = runMCMC(bs, settings = list(iterations = 10000))
   inferred = MAP(res, start = 2000)$par
   

@@ -38,13 +38,13 @@ data_simulate = as.data.frame(data_simulate)
 parallel::clusterExport(cl, varlist = ls(envir = .GlobalEnv))
 
 results = parSapply(cl, 1:nrow(data_simulate), function(KK) {
-  sourceCpp("R/beverton-hold.cpp")
+  sourceCpp("library/beverton-hold.cpp")
   
   myself = paste(Sys.info()[['nodename']], Sys.getpid(), sep='-')
   dist = cbind(nodes,0:3)
   dev = as.integer(as.numeric(dist[which(dist[,1] %in% myself, arr.ind = TRUE), 2]))
   
-  source("R/functions.R")
+  source("library/functions.R")
   
   tmp = (data_simulate[KK, ])
   
@@ -55,7 +55,7 @@ results = parSapply(cl, 1:nrow(data_simulate), function(KK) {
       b0_e = ifelse(tmp$b0_e,       runif(1, 0, 1.0), 0.5)
       b1_recr = ifelse(tmp$b1_recr, runif(1, 0, 50), 20)
       b2_recr = ifelse(tmp$b2_recr, runif(1, -5, 0.0), -0.2)
-      b1_g = ifelse(tmp$b1_g,       runif(1, 0, 1.0), 3)
+      b1_g = ifelse(tmp$b1_g,       runif(1, 0, 1.0), 0.3)
       b2_g = ifelse(tmp$b2_g,       runif(1, -5, 0), -0.1)
       
       data_tmp =  beverton_holt(N0 = 10,
@@ -98,17 +98,50 @@ results = parSapply(cl, 1:nrow(data_simulate), function(KK) {
   return(result)
 })
 saveRDS(results, file = "results/results_2000.RDS")
+parallel::stopCluster(cl)
 
+cl = makeCluster(12L)
+nodes = unlist(parallel::clusterEvalQ(cl, paste(Sys.info()[['nodename']], Sys.getpid(), sep='-')))
+clusterEvalQ(cl, {library(sjSDM);source("library/functions.R")})
+clusterEvalQ(cl, {library(Rcpp);sourceCpp("library/beverton-hold.cpp")})
+
+parameter = 
+  data.frame(
+    par = c("distP", "b0_e","b1_recr", "b2_recr", "b1_g","b2_g"),
+    default = c(0.01, 0.5, 20, -0.2, 3, -0.1),
+    min = c(0, 0, 0, -5, 0, -5),
+    max = c(0.2, 1, 50, 0, 10,0)
+  )
+
+
+data_simulate = expand.grid(factor(c(0,1)), 
+                            factor(c(0, 1)), 
+                            factor(c(0, 1)), 
+                            factor(c(0, 1)), 
+                            factor(c(0, 1)), 
+                            factor(c(0,1)))[-1,]
+data_simulate = sapply(as.data.frame(data_simulate), function(r) as.integer(r) - 1L)
+colnames(data_simulate) = c("distP",
+                            "b0_e",
+                            "b1_recr",
+                            "b2_recr",
+                            "b1_g",
+                            "b2_g")
+data_simulate = as.data.frame(data_simulate)
+
+parallel::clusterExport(cl, varlist = ls(envir = .GlobalEnv))
+
+gc()
 torch$cuda$empty_cache()
 
 results = parSapply(cl, 1:nrow(data_simulate), function(KK) {
-  sourceCpp("R/beverton-hold.cpp")
+  sourceCpp("library/beverton-hold.cpp")
   
   myself = paste(Sys.info()[['nodename']], Sys.getpid(), sep='-')
   dist = cbind(nodes,0:3)
   dev = as.integer(as.numeric(dist[which(dist[,1] %in% myself, arr.ind = TRUE), 2]))
   
-  source("R/functions.R")
+  source("library/functions.R")
   
   tmp = (data_simulate[KK, ])
   
@@ -119,7 +152,7 @@ results = parSapply(cl, 1:nrow(data_simulate), function(KK) {
       b0_e = ifelse(tmp$b0_e,       runif(1, 0, 1.0), 0.5)
       b1_recr = ifelse(tmp$b1_recr, runif(1, 0, 50), 20)
       b2_recr = ifelse(tmp$b2_recr, runif(1, -5, 0.0), -0.2)
-      b1_g = ifelse(tmp$b1_g,       runif(1, 0, 1.0), 3)
+      b1_g = ifelse(tmp$b1_g,       runif(1, 0, 1.0), 0.3)
       b2_g = ifelse(tmp$b2_g,       runif(1, -5, 0), -0.1)
       
       data_tmp =  beverton_holt(N0 = 10, 
