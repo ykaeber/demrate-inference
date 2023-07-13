@@ -153,21 +153,14 @@ sourceCpp("library/fordem.cpp")
 system.time(
   outMat1 <- runModel(pars = parsModel, speciesPars = selected_species_pars)
 )
-<<<<<<< HEAD
-library(jointprof)
-out_file <- tempfile("jointprof", fileext = ".out", tmpdir = ".")
-start_profiler(out_file)
-out <- capture.output(
-  runModel(pars = parsModel, speciesPars = selected_species_pars)
-)
-stop_profiler()
 
-out1 <- fread(paste0(out, collapse = "\n") )
-=======
+
+
+
+
 outDT <- data.table(outMat1)
 names(outDT) <- c(parsModel$outVars,"t","p")
 out1 <- outDT
->>>>>>> 5d1de56fd276b8f8ca9c9e9482506933100cebfe
 out1 <- merge(out1, selected_species_pars[,c("spID","species")], by = "spID")
 
 p_dat <- out1[, .(
@@ -185,7 +178,11 @@ p_dat_allSP <- p_dat[, .(
 ), by = .(t)]
 
 p_dat <- melt(p_dat, id.vars = c("t", "species"))
+
+
+
 p_dat_allSP <- melt(p_dat_allSP, id.vars = c("t", "species"))
+p_dat_allSP[p_dat_allSP$variable == "ba",]
 
 ggplot(
   p_dat, aes(x = t, y = value))+

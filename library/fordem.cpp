@@ -279,33 +279,33 @@ public:
       if(laiIDX != -1) data(spIDX,laiIDX) += gFolA * nTrs;
       if(dbhIDX != -1) data(spIDX,dbhIDX) += dbh*nTrs;
       if(baIDX != -1) data(spIDX,baIDX) += (nTrs*3.14159/4*dbh*dbh)/(areaHectar*10000);
-    
-    if(nTrsIDX != -1) {
-      data(spIDX, nTrsIDX) += nTrs;
+      
+      if(nTrsIDX != -1) {
+        data(spIDX, nTrsIDX) += nTrs;
       }else{
         nTrsVec[nTrsIDX] += nTrs;
-        }
       }
+    }
     
     if(dbhIDX != -1){
-        for (int i = 0; i < data.nrow(); i++) {
-          if(nTrsIDX != -1) {
-            if(data(i, nTrsIDX) > 0){
-              data(i, dbhIDX) = data(i, dbhIDX)/data(i, nTrsIDX);
-              data(i, nTrsIDX) = data(i, nTrsIDX)/areaHectar;
-            }else{
-              data(i, dbhIDX) = 0;
-            }
+      for (int i = 0; i < data.nrow(); i++) {
+        if(nTrsIDX != -1) {
+          if(data(i, nTrsIDX) > 0){
+            data(i, dbhIDX) = data(i, dbhIDX)/data(i, nTrsIDX);
+            data(i, nTrsIDX) = data(i, nTrsIDX)/areaHectar;
           }else{
-            if(data(i, nTrsIDX) > 0){
-              data(i, dbhIDX) = data(i, dbhIDX)/nTrsVec[i]; 
-              nTrsVec[i] = nTrsVec[i]/areaHectar;
-            }else{
-              data(i, dbhIDX) = 0; 
-            }
+            data(i, dbhIDX) = 0;
+          }
+        }else{
+          if(data(i, nTrsIDX) > 0){
+            data(i, dbhIDX) = data(i, dbhIDX)/nTrsVec[i]; 
+            nTrsVec[i] = nTrsVec[i]/areaHectar;
+          }else{
+            data(i, dbhIDX) = 0; 
           }
         }
       }
+    }
     laiVec = revCumSum(laiVecTemp);
   }
   
@@ -350,7 +350,7 @@ List regeneration_f(List cohorts, double LAI, double env, List pars, List specie
       double shadeCond = shadeF(LAI, shadeMean, 0.1);
       double regShadeShape = 3;
       shadeCond = regShadeEff*pow(shadeCond, regShadeShape);
-        
+      
       double envMean = as<NumericVector>(speciesPars["env"])[ispID];
       double envCond = envF(envMean, 0.1, env, nicheWidth);
       double regEnvShape = 3;
@@ -394,7 +394,7 @@ List regeneration_f(List cohorts, double LAI, double env, List pars, List specie
       }
     }
   }
-
+  
   return cohorts;
 }
 
@@ -455,7 +455,7 @@ List mortality_f(List cohorts, NumericVector laiVec, double env, double tDist, L
   NumericVector kDMaxVec = as<NumericVector>(speciesPars["kDMax"]);
   NumericVector shadeMeanVec = as<NumericVector>(speciesPars["kLy"]);
   NumericVector envMeanVec = as<NumericVector>(speciesPars["env"]);
-
+  
   cohorts = clone(cohorts);
   for (int i = 0; i < cohorts.size(); i++) {
     List iCohort = cohorts[i];
@@ -491,7 +491,7 @@ List mortality_f(List cohorts, NumericVector laiVec, double env, double tDist, L
     
     double mortP = std::min(gPShade + gPEnv + gPSize + tDist, 1.0);
     
-
+    
     int nTrs = iCohort["nTrs"];
     if (nTrs > 0) {
       int nTrsDead = Rcpp::sum(Rcpp::rbinom(nTrs, 1, mortP));
@@ -509,7 +509,7 @@ List mortality_f(List cohorts, NumericVector laiVec, double env, double tDist, L
       aliveCohorts.push_back(cohorts[i]);
     }
   }
-
+  
   return aliveCohorts;
 }
 
