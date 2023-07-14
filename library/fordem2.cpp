@@ -12,28 +12,54 @@ double roundToDecimal(double x, int decimalPlaces) {
   return std::round(x * power) / power;
 }
 
-std::chrono::steady_clock::time_point startTime;
 
-// Function to start the timer
+
+std::map<std::string, std::chrono::steady_clock::time_point> timers;
+std::map<std::string, std::vector<double>> timeRecords;
+
+// Function to start a timer with the given name
 // [[Rcpp::export]]
-void startTimer() {
-  startTime = std::chrono::steady_clock::now();
+void startTimer(std::string timerName) {
+  timers[timerName] = std::chrono::steady_clock::now();
 }
 
-// Function to print the elapsed time
+// Function to calculate and record the runtime since the timer was started
 // [[Rcpp::export]]
-void printElapsedTime(std::string additionalString = "") {
-  // Stop the timer
-  std::chrono::steady_clock::time_point endTime = std::chrono::steady_clock::now();
-  
-  // Calculate the elapsed time
-  std::chrono::duration<double> elapsedSeconds = endTime - startTime;
-  
-  // Print the elapsed time with additional string
-  Rcout << "Elapsed time" << (additionalString.empty() ? "" : " (" + additionalString + ")")
-        << ": " << elapsedSeconds.count() << " seconds" << std::endl;
+void addTime(std::string timerName) {
+  if (timers.find(timerName) != timers.end()) {
+    std::chrono::steady_clock::time_point endTime = std::chrono::steady_clock::now();
+    double duration = std::chrono::duration<double>(endTime - timers[timerName]).count();
+    timeRecords[timerName].push_back(duration);
+  } else {
+    Rcpp::stop("Timer not found: " + timerName);
+  }
 }
 
+// Function to print aggregated time statistics
+// [[Rcpp::export]]
+void printAggregatedTimeStats() {
+  Rcpp::Rcout << "TimeMarker,mean,sum,SD\n";
+  for (const auto& record : timeRecords) {
+    const std::string& timerName = record.first;
+    const std::vector<double>& times = record.second;
+    
+    double sum = 0.0;
+    for (double time : times) {
+      sum += time;
+    }
+    double mean = sum / times.size();
+    
+    double squaredSum = 0.0;
+    for (double time : times) {
+      double diff = time - mean;
+      squaredSum += diff * diff;
+    }
+    double sd = std::sqrt(squaredSum / times.size());
+    
+    Rcpp::Rcout << timerName << "," << mean << "," << sum << "," << sd << "\n";
+  }
+  timeRecords.clear();
+}
 
 // [[Rcpp::export]]
 NumericVector revCumSum(NumericVector vec) {
@@ -210,7 +236,7 @@ NumericMatrix updateH(NumericMatrix cohorts, List pars, List speciesPars) {
     
     double H = kB1 + (kHMax - kB1) * (1 - exp(-kSIn * D / (kHMax - kB1)));
     
-    cohorts(i, 2) = H;
+    cohorts(i, 4) = H;
   }
   
   return cohorts;
@@ -253,7 +279,7 @@ public:
     
     double maxH = 0;
     for (int i = 0; i < cohorts.nrow(); i++) {
-      double H = cohorts(i, 2);
+      double H = cohorts(i, 4);
       if (H > maxH) maxH = H;
     }
     heightClassesVec = createHeightClasses(maxH, pars["heightClassesN"]);
@@ -263,11 +289,11 @@ public:
       int ispID = cohorts(i, 1);
       int spIDX = findIntegerIndex(actualSpecies, ispID);
       double dbh = cohorts(i, 3);
-      int nTrs = cohorts(i, 0);
+      int nTrs = cohorts(i, 2);
       
       double gFolA = gFolA_f(kA1Vec[ispID], kA2Vec[ispID], kC1Vec[ispID], kC2Vec[ispID], dbh, areaHectar);
       
-      double H = cohorts(i, 2);
+      double H = cohorts(i, 4);
       int heightClass = getHeightClass(H, heightClassesVec);
       laiVecTemp[heightClass] += gFolA * nTrs;
       
@@ -373,7 +399,7 @@ NumericMatrix regeneration_f(NumericMatrix cohorts, double LAI, double env, List
     }
     
     int numActualSpecies = actualSpecies.size();
-    NumericMatrix newCohorts(numActualSpecies, 4);
+    NumericMatrix newCohorts(numActualSpecies, 5);
     
     int newRow = 0;
     for (int i = 0; i < numActualSpecies; i++) {
@@ -386,6 +412,7 @@ NumericMatrix regeneration_f(NumericMatrix cohorts, double LAI, double env, List
           newCohorts(newRow, 1) = ispID;
           newCohorts(newRow, 2) = newTrs;
           newCohorts(newRow, 3) = 1;
+          newCohorts(newRow, 4) = -1;
           newRow++;
         }
       }
@@ -428,7 +455,7 @@ NumericMatrix growth_f(NumericMatrix cohorts, NumericVector laiVec, double env, 
   for (int i = 0; i < numCohorts; i++) {
     double D = cohorts(i, 3);
     int ispID = cohorts(i, 1);
-    double H = cohorts(i, 2);
+    double H = cohorts(i, 4);
     int heightClass = getHeightClass(H, heightClassesVec);
     double LAI = laiVec[heightClass];
     
@@ -463,57 +490,54 @@ NumericMatrix growth_f(NumericMatrix cohorts, NumericVector laiVec, double env, 
 // =============================================================================
 // [[Rcpp::export]]
 NumericMatrix mortality_f(NumericMatrix cohorts, NumericVector laiVec, double env, double tDist, List pars, List speciesPars, NumericVector heightClassesVec) {
-  NumericVector kDMaxVec = as<NumericVector>(speciesPars["kDMax"]);
-  NumericVector shadeMeanVec = as<NumericVector>(speciesPars["kLy"]);
-  NumericVector envMeanVec = as<NumericVector>(speciesPars["env"]);
+  const NumericVector kDMaxVec = speciesPars["kDMax"];
+  const NumericVector shadeMeanVec = speciesPars["kLy"];
+  const NumericVector envMeanVec = speciesPars["env"];
+  const double kAlpha = pars["bgMort"];
+  const double nicheWidth = pars["nicheWidth"];
+  const double mortEnvEff = pars["mortEnvEff"];
+  const double mortShadeEff = pars["mortShadeEff"];
+  const double mortShadeShape = 3;
+  const double mortEnvShape = 3;
   
-  int numCohorts = cohorts.nrow();
-  int numVars = cohorts.ncol();
+  const int numCohorts = cohorts.nrow();
+  const int numVars = 5;
   
   NumericMatrix aliveCohorts(numCohorts, numVars);
   int aliveCount = 0;
   
   for (int i = 0; i < numCohorts; i++) {
-    double D = cohorts(i, 3);
-    int ispID = cohorts(i, 1);
-    double H = cohorts(i, 2);
-    int heightClass = getHeightClass(H, heightClassesVec);
-    double LAI = laiVec[heightClass];
+    const double D = cohorts(i, 3);
+    const int ispID = cohorts(i, 1);
+    const double H = cohorts(i, 4);
     
-    double kAlpha = pars["bgMort"];
-    double nicheWidth = pars["nicheWidth"];
-    double mortEnvEff = pars["mortEnvEff"];
-    double mortShadeEff = pars["mortShadeEff"];
+    const int heightClass = getHeightClass(H, heightClassesVec);
+    const double LAI = laiVec[heightClass];
     
-    double kDMax = kDMaxVec[ispID];
-    double shadeMean = shadeMeanVec[ispID];
-    double envMean = envMeanVec[ispID];
+    const double kDMax = kDMaxVec[ispID];
+    const double shadeMean = shadeMeanVec[ispID];
+    const double envMean = envMeanVec[ispID];
     
-    // shade dependent mortality
-    double shadeCond = shadeF(LAI, shadeMean, 0.1);
-    double mortShadeShape = 3;
-    double gPShade = mortShadeEff * pow(1 - shadeCond, mortShadeShape);
+    // Shade dependent mortality
+    const double shadeCond = shadeF(LAI, shadeMean, 0.1);
+    const double gPShade = mortShadeEff * pow(1 - shadeCond, mortShadeShape);
     
-    // environment dependent mortality
-    double envCond = envF(envMean, 0.1, env, nicheWidth);
-    double mortEnvShape = 3;
-    double gPEnv = mortEnvEff * pow(1 - envCond, mortEnvShape);
+    // Environment dependent mortality
+    const double envCond = envF(envMean, 0.1, env, nicheWidth);
+    const double gPEnv = mortEnvEff * pow(1 - envCond, mortEnvShape);
     
-    // size dependent mortality
-    double gPSize = 0.1 * pow(D / kDMax, kAlpha);
+    // Size dependent mortality
+    const double gPSize = 0.1 * pow(D / kDMax, kAlpha);
+    const double mortP = std::min(gPShade + gPEnv + gPSize + tDist, 1.0);
     
-    double mortP = std::min(gPShade + gPEnv + gPSize + tDist, 1.0);
-    
-    int nTrs = cohorts(i, 0);
+    const int nTrs = cohorts(i, 2);
     if (nTrs > 0) {
-      int nTrsDead = Rcpp::sum(Rcpp::rbinom(nTrs, 1, mortP));
-      cohorts(i, 0) = nTrs - nTrsDead;
+      const int nTrsDead = sum(rbinom(nTrs, 1, mortP));
+      cohorts(i, 2) = nTrs - nTrsDead;
       
       // Copy the cohort to aliveCohorts if it's still alive
       if (cohorts(i, 0) > 0) {
-        for (int j = 0; j < numVars; j++) {
-          aliveCohorts(aliveCount, j) = cohorts(i, j);
-        }
+        aliveCohorts(aliveCount, _) = cohorts(i, _);
         aliveCount++;
       }
     }
@@ -536,7 +560,7 @@ NumericMatrix mortality_f(NumericMatrix cohorts, NumericVector laiVec, double en
 
 // [[Rcpp::export]]
 NumericMatrix runModel(List pars, List speciesPars) {
-  startTimer();
+  startTimer("runModel");
   int patchesN = pars["patchesN"];
   double env = pars["env"];
   int timesteps = pars["timesteps"];
@@ -585,33 +609,43 @@ NumericMatrix runModel(List pars, List speciesPars) {
   
   for (int p = 1; p <= patchesN; p++) {
     NumericMatrix cohorts = clone(initCohorts);
+    // NumericMatrix cohorts(0,5);
     
     for (int t = 1; t <= timesteps; t++) {
       // Rcpp::Rcout << "######################### t = "<<t  << "\n";
-      // startTimer();
+      startTimer("updateH");
       cohorts = updateH(cohorts, pars, speciesPars);
-      //Rcpp::Rcout << "updateH worked\n";
+      addTime("updateH");
+
+      startTimer("updateLAI");
       stateVars.updateLAI(cohorts, speciesPars, areaHectar, actualSpeciesVec, outVars,  pars);
-      //Rcpp::Rcout << "updateLAI worked\n";
-      
+      addTime("updateLAI");
+
+      startTimer("stateVarsUpdate");
       for (int i = 0; i < stateVars.getMatrix().nrow(); i++) {
         for(int j = 1; j < stateVars.getMatrix().ncol(); j++){
           outMat( i + (t-1)*actualSpeciesVec.length() + (p-1)*timesteps*actualSpeciesVec.length(), j) = stateVars.getMatrix()(i, j); // FIXME
         }
       }
-      //Rcpp::Rcout << "statevarsupdate worked\n";
-      
-      //int tDist = R::rbinom(1, pars["distP"]);
-      int tDist = distMat(t, p);
+      addTime("stateVarsUpdate");
+      // 
+      int tDist = distMat(t, p-1);
+
+      startTimer("growth_f");
       cohorts = growth_f(cohorts, stateVars.getLAIVec(), env, pars, speciesPars, stateVars.getHeightClassesVec());
-      //Rcpp::Rcout << "growth worked\n";
+      addTime("growth_f");
+
+      startTimer("mortality_f");
       cohorts = mortality_f(cohorts, stateVars.getLAIVec(), env, tDist, pars, speciesPars, stateVars.getHeightClassesVec());
-      //Rcpp::Rcout << "mortality worked\n";
+      addTime("mortality_f");
+
+      startTimer("regeneration_f");
       cohorts = regeneration_f(cohorts, stateVars.getLAI(0), env, pars, speciesPars);
-      //Rcpp::Rcout << "regeneration worked\n";
+      addTime("regeneration_f");
     }
   }
-  printElapsedTime();
+  
+  addTime("runModel");
+  printAggregatedTimeStats();
   return outMat;
 }
-
