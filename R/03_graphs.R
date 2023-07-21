@@ -3,6 +3,7 @@ library(data.table)
 library(wesanderson)
 library(forcats)
 library(tidytext)
+library(stringr)
 
 ### Functions
 confidenceInterval <- function(pred, true){
@@ -136,6 +137,41 @@ for(i_par in c("_g", "_recr")){
   print(p)
   dev.off()
 }
+
+pal = as.vector(wes_palette("FantasticFox1", n = 3, type = "discrete"))[c(1,3)]
+names(pal) <- c(FALSE, TRUE)
+Vectorize(label_fun)
+
+p_dat2 <- thails_coeffs[!(par %in% c("b0_e", "distP")) & grepl("b0_e", comb)]
+p_dat2[grepl("_g", par), process := "growth",]
+p_dat2[grepl("_recr", par), process := "regeneration",]
+p_dat2[grepl("b1", par), driver := "density",]
+p_dat2[grepl("b2", par), driver := "environment",]
+# for(i_par in c("_g", "_recr")){
+#   if(i_par == "_g") par_lab = "growth" else par_lab = "regeneration"
+  p <- 
+    ggplot(
+    p_dat2,
+    aes(y = abs(SSD_rec), x = driver, color = grepl("distP", comb)))+
+    # scale_y_discrete(labels = Vectorize(label_fun))+
+    geom_boxplot(width = 0.4)+
+    # scale_fill_manual(name = element_text("error\ncomponent"), values = pal)+
+    scale_color_manual(name = element_text("disturbances"), values = pal)+
+    # facet_grid(process~factor(N_g_recr, levels = 1:2, labels = c(paste0("inferring environment OR density parameter"), "inferring environment AND density parameter")), scales = "free_y")+
+    facet_grid(process~factor(N_g_recr, levels = 1:2, labels = c(paste0("inferring environment OR density parameter"), "inferring environment AND density parameter"))
+               , scales = "free_y")+
+    # facet_wrap(~factor(grepl("distP", comb)), scales = "free_y")+
+    theme_classic()+
+    #theme(legend.title = element_text("Error\ncomponent"))+
+    xlab("driver")+
+    ylab("total error")+
+    coord_cartesian(ylim = c(0,1))+
+    theme(legend.position = "bottom")
+  png(paste0(figure_path, "/error-boxplots.png"), res = 300, units = "in", width = 12, height = 7)
+  print(p)
+  dev.off()
+# }
+
 
 # fit linear model for identifying effect of parameters for the r2
 fm <- lm(var ~ (distP+b0_e + b1_recr + b2_recr + b2_g)*par -1, 
