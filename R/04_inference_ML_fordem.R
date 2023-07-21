@@ -4,22 +4,8 @@ library(parallel)
 library(Rcpp)
 library(data.table)
 library(tidyverse)
-sourceCpp("library/fordem2.cpp")
 source("library/functions.R")
 
-
-cl = makeCluster(50L)
-nodes = unlist(parallel::clusterEvalQ(cl, paste(Sys.info()[['nodename']], Sys.getpid(), sep='-')))
-clusterEvalQ(cl, {library(sjSDM);library(data.table);library(tidyverse);source("library/functions.R")})
-clusterEvalQ(cl, {library(Rcpp)})
-
-# distP = 0.01, # range 0 to 0.2
-# distInt = 0.01, # (fraction of patches affected) range 0 to 1
-# regEnvEff = 1, # range 0 to 10
-# regShadeEff = 1, # range 0 to 10
-# mortEnvEff = 0.2, # range 0 to 10
-# mortShadeEff = 1, # range 0 to 10
-# env = 0.4, # range 0 to 1
 
 parameter =
   data.frame(
@@ -41,21 +27,26 @@ data_simulate = sapply(as.data.frame(data_simulate), function(r) as.integer(r) -
 colnames(data_simulate) = c("distP", "distInt","regEnvEff", "regShadeEff", "mortEnvEff","mortShadeEff", "env")
 data_simulate = as.data.frame(data_simulate)
 
-# parallel::clusterExport(cl, varlist = ls(envir = .GlobalEnv))
 
-results = list()
-for(KK in 1:nrow(data_simulate)) {
-  print(KK)
-  # myself = paste(Sys.info()[['nodename']], Sys.getpid(), sep='-')
-  # dist = cbind(nodes,0:3)
-  # dev = as.integer(as.numeric(dist[which(dist[,1] %in% myself, arr.ind = TRUE), 2]))
-  # 
+cl = makeCluster(8L)
+nodes = unlist(parallel::clusterEvalQ(cl, paste(Sys.info()[['nodename']], Sys.getpid(), sep='-')))
+clusterEvalQ(cl, {library(sjSDM);library(Rcpp);library(parallel);library(data.table);library(tidyverse);source("library/functions.R")})
+
+parallel::clusterExport(cl, varlist = ls(envir = .GlobalEnv))
+results = parSapply(cl, 1:nrow(data_simulate), function(KK) {
+  source("library/functions.R")
+  myself = paste(Sys.info()[['nodename']], Sys.getpid(), sep='-')
+  dist = cbind(nodes,0:3)
+  dev = as.integer(as.numeric(dist[which(dist[,1] %in% myself, arr.ind = TRUE), 2]))
+
   tmp = (data_simulate[KK, ])
-  parallel::clusterExport(cl, varlist = list("tmp"), envir = environment())
+  
+  cl2 = makeCluster(10L)
+  clusterEvalQ(cl2, {library(Rcpp);library(data.table);library(tidyverse);source("library/functions.R")})
+  parallel::clusterExport(cl2, varlist = list("tmp"), envir = environment())
   
   data =
-    parLapply(cl, 1:2000, function(i) {
-      source("library/functions.R")
+    parLapply(cl2, 1:2000, function(i) {
       sourceCpp("library/fordem2.cpp")
       distP =          ifelse(tmp$distP,       runif(1, 0, 0.2), 0.01)
       distInt =        ifelse(tmp$distInt,     runif(1, 0, 1.0), 0.01)
@@ -98,6 +89,7 @@ for(KK in 1:nrow(data_simulate)) {
                env
       ), N = data_tmp ))
     })
+  parallel::stopCluster(cl2)
   N = (abind::abind(lapply(data, function(d) d$N), along = 0L))
   N = (N-max(N))/max(N)
   pars = do.call(rbind, lapply(data, function(d) d$pars))
@@ -105,13 +97,14 @@ for(KK in 1:nrow(data_simulate)) {
   samples = data.frame(samples)
   colnames(samples) = names(which(unlist(tmp) == 1, arr.ind = TRUE))
   
-  #if(sum(unlist(tmp)) != 6) samples = samples[, -c(which(unlist(tmp) != 1, arr.ind = TRUE)),drop=FALSE]
-  result = train_function_demFor(N, samples, n_response = ncol(samples), epochs = 1000L, device = as.integer(1L), split =0.7, ntimes = 500L)
-  
-  results[[KK]]  = list(results = result, data = samples)
-  names(results)[KK] = paste0(names(which(unlist(tmp) == 1, arr.ind = TRUE)), collapse = "+")
-  saveRDS(results, file = "results/results_2000_forDem.RDS")
-}
+  result = train_function_demFor(N, samples, n_response = ncol(samples), epochs = 1000L, device = as.integer(dev), split =0.7, ntimes = 500L)
+  # results[[KK]]  = list(results = result, data = samples)
+  # names(results)[KK] = paste0(names(which(unlist(tmp) == 1, arr.ind = TRUE)), collapse = "+")
+  result = list(list(results = result, data = samples))
+  names(result) = paste0(names(which(unlist(tmp) == 1, arr.ind = TRUE)), collapse = "+")
+  return(result)
+ # saveRDS(results, file = "results/results_2000_forDem.RDS")
+})
 saveRDS(results, file = "results/results_2000_forDem_tot.RDS")
 parallel::stopCluster(cl)
 # 
