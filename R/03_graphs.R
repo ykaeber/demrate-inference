@@ -139,35 +139,59 @@ for(i_par in c("_g", "_recr")){
 }
 
 pal = as.vector(wes_palette("FantasticFox1", n = 3, type = "discrete"))[c(1,3)]
-names(pal) <- c(FALSE, TRUE)
+
+infer_label <- c("one driver\n(environment OR density)", "two drivers\n(environment AND density)") 
+names(pal) <- infer_label
 Vectorize(label_fun)
 
-p_dat2 <- thails_coeffs[!(par %in% c("b0_e", "distP")) & grepl("b0_e", comb)]
+p_dat2 <- thails_coeffs[!(par %in% c("b0_e", "distP")) & grepl("b0_e", comb) & Npars == 4]
+p_dat2 <- thails_coeffs[
+  (grepl("_recr", par) & comb %in% c(
+    "b0_e+b1_recr+b2_recr","b0_e+b2_recr","b0_e+b1_recr",
+    "b0_e+b1_recr+b2_recr+b1_g+b2_g","b0_e+b2_recr+b2_g","b0_e+b1_recr+b1_g"
+    )) | 
+    (grepl("_g", par) & comb %in% c(
+      "b0_e+b1_g+b2_g","b0_e+b2_g","distP+b0_e+b1_g",
+      "b0_e+b1_recr+b2_recr+b1_g+b2_g","b0_e+b2_recr+b2_g","b0_e+b1_recr+b1_g"
+      ))
+  ]
 p_dat2[grepl("_g", par), process := "growth",]
 p_dat2[grepl("_recr", par), process := "regeneration",]
+p_dat2[comb %in% c("b0_e+b1_recr+b2_recr+b1_g+b2_g","b0_e+b2_recr+b2_g","b0_e+b1_recr+b1_g") & grepl("_g", par), setting := "two processes\n(growth AND regeneration)",]
+p_dat2[comb %in% c("b0_e+b1_recr+b2_recr+b1_g+b2_g","b0_e+b2_recr+b2_g","b0_e+b1_recr+b1_g") & grepl("_recr", par), setting := "two processes\n(growth AND regeneration)",]
+p_dat2[!(comb %in% c("b0_e+b1_recr+b2_recr+b1_g+b2_g","b0_e+b2_recr+b2_g","b0_e+b1_recr+b1_g")) & grepl("_g", par), setting := "one process\n(growth OR regeneration)",]
+p_dat2[!(comb %in% c("b0_e+b1_recr+b2_recr+b1_g+b2_g","b0_e+b2_recr+b2_g","b0_e+b1_recr+b1_g")) & grepl("_recr", par), setting := "one process\n(growth OR regeneration)",]
 p_dat2[grepl("b1", par), driver := "density",]
 p_dat2[grepl("b2", par), driver := "environment",]
 # for(i_par in c("_g", "_recr")){
 #   if(i_par == "_g") par_lab = "growth" else par_lab = "regeneration"
   p <- 
     ggplot(
-    p_dat2,
-    aes(y = abs(SSD_rec), x = driver, color = grepl("distP", comb)))+
+    p_dat2[error_name == "slope"],
+    aes(y = abs(SSD_rec), x = driver, 
+        color = factor(N_g_recr, levels = 1:2, labels = infer_label),
+        fill = factor(N_g_recr, levels = 1:2, labels = infer_label)
+        ))+
     # scale_y_discrete(labels = Vectorize(label_fun))+
-    geom_boxplot(width = 0.4)+
-    # scale_fill_manual(name = element_text("error\ncomponent"), values = pal)+
-    scale_color_manual(name = element_text("disturbances"), values = pal)+
-    # facet_grid(process~factor(N_g_recr, levels = 1:2, labels = c(paste0("inferring environment OR density parameter"), "inferring environment AND density parameter")), scales = "free_y")+
-    facet_grid(process~factor(N_g_recr, levels = 1:2, labels = c(paste0("inferring environment OR density parameter"), "inferring environment AND density parameter"))
-               , scales = "free_y")+
-    # facet_wrap(~factor(grepl("distP", comb)), scales = "free_y")+
-    theme_classic()+
-    #theme(legend.title = element_text("Error\ncomponent"))+
+    geom_bar(stat = "identity", position = position_dodge2(width = 0.4))+
+    scale_fill_manual(name = element_text("inference effort"), values = pal)+
+    scale_color_manual(name = element_text("inference effort"), values = pal)+
+    # scale_color_manual(name = element_text("disturbances"), values = pal)+
+    # facet_grid(process~factor(N_g_recr, levels = 1:2, labels = infer_label), scales = "free_y")+
+    # facet_grid(process~factor(N_g_recr, levels = 1:2, labels = infer_label)
+    #            , scales = "free_y")+
+    facet_grid(process~setting, scales = "free_y")+
+    theme_bw()+
+    theme(legend.title = element_blank())+
+    guides(
+      color = guide_legend(direction = "horizontal"),
+      fill = guide_legend(direction = "horizontal")
+      )+
     xlab("driver")+
     ylab("total error")+
     coord_cartesian(ylim = c(0,1))+
     theme(legend.position = "bottom")
-  png(paste0(figure_path, "/error-boxplots.png"), res = 300, units = "in", width = 12, height = 7)
+  png(paste0(figure_path, "/error-boxplots.png"), res = 300, units = "in", width = 5, height = 5)
   print(p)
   dev.off()
 # }
