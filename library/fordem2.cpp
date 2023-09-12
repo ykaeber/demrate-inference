@@ -559,13 +559,15 @@ NumericMatrix mortality_f(NumericMatrix cohorts, NumericVector laiVec, double en
 // =============================================================================
 
 // [[Rcpp::export]]
-NumericMatrix runModel(List pars, List speciesPars) {
+NumericMatrix runModel(List pars) {
   startTimer("runModel");
   int patchesN = pars["patchesN"];
   double env = pars["env"];
   int timesteps = pars["timesteps"];
   double areaHectar = pars["areaHectar"];
   double distInt = pars["distInt"];
+  List speciesPars = pars["speciesPars"];
+  
   //Rcpp::Rcout << "start reading initPop worked\n";
   NumericMatrix initCohorts;
   if (!Rf_isNull(pars["initPop"])) {
@@ -593,10 +595,13 @@ NumericMatrix runModel(List pars, List speciesPars) {
   outMat = repMat(outMat, timesteps);
   outMat = repMat(outMat, patchesN);
   
+  // predetermin stochastic disturbances for each patch and timestep based on 
+  // distP and distInt
   IntegerMatrix distMat(timesteps, patchesN);
   for(int t = 1; t <= timesteps; t++){
     int tDist = R::rbinom(1, pars["distP"]);
     int distPatchesN = roundToDecimal(patchesN*distInt,0);
+    distPatchesN = std::max(distPatchesN,1);
     IntegerVector distPatches = sample(patchesN, distPatchesN); // given
     for(int p = 1; p <= patchesN; p++){
       if(findIntegerIndex(distPatches, p) != -1){

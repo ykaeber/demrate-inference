@@ -111,6 +111,95 @@ selected_species_pars[spID %in% c(0,2,13,1,17,5, 27)]
 
 
 sourceCpp("library/fordem2.cpp")
+
+
+################################################################################
+## proposal figures
+################################################################################
+
+p_dat_out <- data.table()
+p_dat_allSP_out <- data.table()
+
+for(i_patches in c(1,100)){
+  parsModel <- list(
+    timesteps = 250,
+    sampleSteps = 1,
+    outVars = c("spID", "lai", "nTrs", "dbh", "ba"),
+    # actualSpecies = c(0,2,13,1,17,5, 27),
+    actualSpecies = c(0,1,2,5,9,10,13,14,17,22,23,27),
+    # actualSpecies = selected_species_pars$spID,
+    baseReg = 100/0.1, # range: 1/0.1 to 5000/0.1
+    baseRegP = 0.1, # (optional for inference) range 0.01 to 1
+    regEnvEff = 0.2, # range 0 to 10
+    regShadeEff = 1, # range 0 to 10
+    mortEnvEff = 1, # range 0 to 10
+    mortShadeEff = 3, # range 0 to 10
+    bgMort = 2.3,
+    distP = .05, # range 0 to 0.2
+    distInt = 0.1, # (fraction of patches affected) range 0 to 1
+    env = 0.42, # range 0 to 1
+    nicheWidth = 3,
+    # env = 0.7,
+    patchesN = i_patches,
+    areaHectar = 0.1,
+    heightClassesN = 10,
+    initPop = NULL,
+    # initPop = cohortsIN,
+    speciesPars = selected_species_pars
+  )
+  
+  timeOut <- paste0(
+    capture.output(
+      outMat1 <- runModel(pars = parsModel)
+    ), collapse = "\n")
+  
+  time_dt <- fread(text = timeOut)
+  
+  time_dt[,tot_runtime := sum[TimeMarker == "runModel"],]
+  time_dt[,perc_runtime := sum/tot_runtime,]
+  
+  time_dt[order(perc_runtime)]
+  
+  outDT <- data.table(outMat1)
+  names(outDT) <- c(parsModel$outVars,"t","p")
+  out1 <- outDT
+  out1 <- merge(out1, selected_species_pars[,c("spID","species")], by = "spID")
+  
+  p_dat <- out1[, .(
+    lai = mean(lai),
+    ba = mean(ba),
+    dbh = mean(dbh),
+    nTrs = mean(nTrs)
+  ), by = .(t, species)]
+  p_dat_allSP <- p_dat[, .(
+    lai = sum(lai),
+    ba = sum(ba),
+    dbh = mean(dbh),
+    nTrs = sum(nTrs),
+    species = "all"
+  ), by = .(t)]
+  
+  p_dat <- melt(p_dat, id.vars = c("t", "species"))
+  p_dat_allSP <- melt(p_dat_allSP, id.vars = c("t", "species"))
+  p_dat$Npatches <- i_patches
+  p_dat_allSP$Npatches <- i_patches
+  
+  p_dat_out <- rbind(p_dat_out, p_dat)
+  p_dat_allSP_out <- rbind(p_dat_allSP_out, p_dat_allSP)
+  gc()
+}
+
+
+ggplot(
+  p_dat_out[variable %in% c("ba", "nTrs")], aes(x = t, y = value))+
+  geom_line(aes(color = factor(species)))+
+  geom_line(data = p_dat_allSP_out[variable %in% c("ba", "nTrs")], linetype = 2)+
+  facet_wrap(paste("N of patches =",Npatches)~variable, scales = "free_y")+
+  xlab("time")+
+  theme_bw()+
+  guides(color = guide_legend(title = "species"))
+
+
 #sourceCpp("library/fordem-benchemark.cpp")
 parsModel <- list(
   timesteps = 500,
@@ -125,18 +214,20 @@ parsModel <- list(
   mortEnvEff = 0.2, # range 0 to 10
   mortShadeEff = 1, # range 0 to 10
   bgMort = 2.3,
-  distP = .01, # range 0 to 0.2
+  distP = .3, # range 0 to 0.2
   distInt = 0.1, # (fraction of patches affected) range 0 to 1
   env = 0.5, # range 0 to 1
   nicheWidth = 4,
   # env = 0.7,
-  patchesN = 100,
+  patchesN = 1,
   areaHectar = 0.1,
   heightClassesN = 10,
   initPop = NULL,
   # initPop = cohortsIN,
   speciesPars = selected_species_pars
 )
+
+
 # system.time(
 #   outMat1 <- runModel(pars = parsModel, speciesPars = selected_species_pars)
 # )
@@ -155,7 +246,7 @@ parsModel <- list(
 # runModel(pars = parsModel, speciesPars = selected_species_pars)
 timeOut <- paste0(
   capture.output(
-    outMat1 <- runModel(pars = parsModel, speciesPars = selected_species_pars)
+    outMat1 <- runModel(pars = parsModel)
   ), collapse = "\n")
 
 time_dt <- fread(text = timeOut)
@@ -272,4 +363,101 @@ install.packages("rbenchmark")
 
 library(rbenchmark)
 
-?rbenchmark
+parsModel <- list(
+  timesteps = 500,
+  sampleSteps = 1,
+  outVars = c("spID", "lai", "nTrs", "dbh", "ba"),
+  actualSpecies = c(0,2,13,1,17,5, 27),
+  # actualSpecies = selected_species_pars$spID,
+  baseReg = 50/0.1, # range: 1/0.1 to 5000/0.1
+  baseRegP = 0.1, # (optional for inference) range 0.01 to 1
+  regEnvEff = 1, # range 0 to 10
+  regShadeEff = 1, # range 0 to 10
+  mortEnvEff = 0.2, # range 0 to 10
+  mortShadeEff = 0.7, # range 0 to 10
+  bgMort = 2.3,
+  distP = .01, # range 0 to 0.2
+  distInt = 0.5, # (fraction of patches affected) range 0 to 1
+  env = 0.5, # range 0 to 1
+  nicheWidth = 4,
+  # env = 0.7,
+  patchesN = 10,
+  areaHectar = 0.1,
+  heightClassesN = 10,
+  initPop = NULL,
+  # initPop = cohortsIN,
+  speciesPars = selected_species_pars
+)
+outMat1 <- runModel(pars = parsModel)
+outDT <- data.table(outMat1)
+names(outDT) <- c(parsModel$outVars,"t","p")
+out1 <- outDT
+out1 <- merge(out1, selected_species_pars[,c("spID","species")], by = "spID")
+p_dat <- out1[, .(
+  lai = mean(lai),
+  ba = mean(ba),
+  dbh = mean(dbh),
+  nTrs = mean(nTrs)
+), by = .(t, species)]
+p_dat_allSP <- p_dat[, .(
+  lai = sum(lai),
+  ba = sum(ba),
+  dbh = mean(dbh),
+  nTrs = sum(nTrs),
+  species = "all"
+), by = .(t)]
+true = p_dat$ba
+
+fun <- function(pars){
+  parsModel <- list(
+    timesteps = 500,
+    sampleSteps = 1,
+    outVars = c("spID", "lai", "nTrs", "dbh", "ba"),
+    actualSpecies = c(0,2,13,1,17,5, 27),
+    # actualSpecies = selected_species_pars$spID,
+    baseReg = 50/0.1, # range: 1/0.1 to 5000/0.1
+    baseRegP = 0.1, # (optional for inference) range 0.01 to 1
+    regEnvEff = 1, # range 0 to 10
+    regShadeEff = 1, # range 0 to 10
+    mortEnvEff = 0.2, # range 0 to 10
+    mortShadeEff = pars, # range 0 to 10
+    bgMort = 2.3,
+    distP = .01, # range 0 to 0.2
+    distInt = 0.5, # (fraction of patches affected) range 0 to 1
+    env = 0.5, # range 0 to 1
+    nicheWidth = 4,
+    # env = 0.7,
+    patchesN = 10,
+    areaHectar = 0.1,
+    heightClassesN = 10,
+    initPop = NULL,
+    # initPop = cohortsIN,
+    speciesPars = selected_species_pars
+  )
+outMat1 <- runModel(pars = parsModel, speciesPars = selected_species_pars)
+outDT <- data.table(outMat1)
+names(outDT) <- c(parsModel$outVars,"t","p")
+out1 <- outDT
+out1 <- merge(out1, selected_species_pars[,c("spID","species")], by = "spID")
+p_dat <- out1[, .(
+  lai = mean(lai),
+  ba = mean(ba),
+  dbh = mean(dbh),
+  nTrs = mean(nTrs)
+), by = .(t, species)]
+p_dat_allSP <- p_dat[, .(
+  lai = sum(lai),
+  ba = sum(ba),
+  dbh = mean(dbh),
+  nTrs = sum(nTrs),
+  species = "all"
+), by = .(t)]
+sum(sqrt((p_dat$ba - true)^2))
+}
+
+out1 = optim(0.1,fun,lower = 0,upper = 1, method = "L-BFGS-B")
+
+out1
+
+
+
