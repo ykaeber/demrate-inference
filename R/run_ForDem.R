@@ -119,35 +119,36 @@ sourceCpp("library/fordem2.cpp")
 
 p_dat_out <- data.table()
 p_dat_allSP_out <- data.table()
+library(tidyverse)
+
+selected_species_pars = as_tibble(selected_species_pars)
+selected_species_pars2 = cbind(selected_species_pars[,1:2], sapply(selected_species_pars[,3:14], function(x) sapply(x, function(XX) as_ftg(XX))))
 
 for(i_patches in c(1,100)){
   parsModel <- list(
     timesteps = 250,
     sampleSteps = 1,
     outVars = c("spID", "lai", "nTrs", "dbh", "ba"),
-    # actualSpecies = c(0,2,13,1,17,5, 27),
     actualSpecies = c(0,1,2,5,9,10,13,14,17,22,23,27),
-    # actualSpecies = selected_species_pars$spID,
-    baseReg = 100/0.1, # range: 1/0.1 to 5000/0.1
-    baseRegP = 0.1, # (optional for inference) range 0.01 to 1
-    regEnvEff = 0.2, # range 0 to 10
-    regShadeEff = 1, # range 0 to 10
-    mortEnvEff = 1, # range 0 to 10
-    mortShadeEff = 3, # range 0 to 10
-    bgMort = 2.3,
-    distP = .05, # range 0 to 0.2
-    distInt = 0.1, # (fraction of patches affected) range 0 to 1
-    env = 0.42, # range 0 to 1
-    nicheWidth = 3,
-    # env = 0.7,
-    patchesN = i_patches,
-    areaHectar = 0.1,
+    baseReg = as_ftg(100/0.1), # range: 1/0.1 to 5000/0.1
+    baseRegP = as_ftg(0.1), # (optional for inference) range 0.01 to 1
+    regEnvEff = as_ftg(0.2), # range 0 to 10
+    regShadeEff = as_ftg(1), # range 0 to 10
+    mortEnvEff = as_ftg(1), # range 0 to 10
+    mortShadeEff = as_ftg(3), # range 0 to 10
+    bgMort = as_ftg(2.3),
+    distP = as_ftg(.05), # range 0 to 0.2
+    distInt = as_ftg(0.1), # (fraction of patches affected) range 0 to 1
+    env = as_ftg(0.42), # range 0 to 1
+    nicheWidth = as_ftg(3),
+    patchesN = 10L,
+    areaHectar = as_ftg(0.1),
     heightClassesN = 10,
     initPop = NULL,
     # initPop = cohortsIN,
-    speciesPars = selected_species_pars
+    speciesPars = selected_species_pars2
   )
-  
+  pars = parsModel
   timeOut <- paste0(
     capture.output(
       outMat1 <- runModel(pars = parsModel)
@@ -432,7 +433,7 @@ fun <- function(pars){
     heightClassesN = 10,
     initPop = NULL,
     # initPop = cohortsIN,
-    speciesPars = selected_species_pars
+    speciesPars = selected_species_pars2
   )
 outMat1 <- runModel(pars = parsModel, speciesPars = selected_species_pars)
 outDT <- data.table(outMat1)
@@ -461,3 +462,29 @@ out1
 
 
 
+
+
+parsModel <- list(
+  timesteps = 250,
+  sampleSteps = 1,
+  outVars = c("spID", "lai", "nTrs", "dbh", "ba"),
+  actualSpecies = c(0,1,2,5,9,10,13,14,17,22,23,27),
+  baseReg = (100/0.1), # range: 1/0.1 to 5000/0.1
+  baseRegP = (0.1), # (optional for inference) range 0.01 to 1
+  regEnvEff = (0.2), # range 0 to 10
+  regShadeEff = (1), # range 0 to 10
+  mortEnvEff = (1), # range 0 to 10
+  mortShadeEff = (3), # range 0 to 10
+  bgMort = (2.3),
+  distP = (.05), # range 0 to 0.2
+  distInt = (0.1), # (fraction of patches affected) range 0 to 1
+  env = (0.42), # range 0 to 1
+  nicheWidth = (3),
+  patchesN = 10L,
+  areaHectar = (0.1),
+  heightClassesN = 10,
+  initPop = NULL,
+  # initPop = cohortsIN,
+  speciesPars = selected_species_pars
+)
+pars = parsModel

@@ -167,33 +167,140 @@ mortality_f = function(cohorts, LAI, env, tDist, pars){
 }
 
 
-runModel <- function(pars){
-  speciesPars = pars[["speciesPars"]]
-  cohorts = pars[["initPop"]]
-  timesteps = pars[["timesteps"]]
-  out = data.table()
-  
-  if(!is.null(cohorts)){
-    plot(0,sum(sapply(cohorts, function(x) x$nTrs)), xlim = c(0, pars$timesteps), ylim = c(0,100))
-  }else{
-    plot(0,0, xlim = c(0, pars$timesteps), ylim = c(0,1000))
+################ New implementation ###############
+
+
+## speciesPars
+# matrix, row = Species, columns = traits 
+speciesPars = matrix(rnorm(5*11), 5, 11) 
+
+## cohortMat
+# matrix, row = Cohorte, columns = c(ID, outpus (e.g. dbh))
+cohortMat = cbind(ID = 1:10, 
+                  dbh = runif(10, 30, 100), 
+                  nTree = rpois(10, 10), 
+                  Species = sample.int(5, 5, replace = TRUE))
+
+## envM
+# matrix, row = Zeit, columns = Predictors
+envM = matrix(rnorm(500*2), 500, 2)
+
+compMat = matrix(0, nrow = 10L, ncol = 1L)
+
+## envMfunctions
+# list, with n = ncol(envM) functions
+# ~E1*T2 + E2*T2 + E1*T3
+# ET = abind::abind(list(outer(envM[,1], speciesPars[,2]), outer(envM[,2],speciesPars[,2]), outer(envM[,1],speciesPars[,3])), along = 0L)
+envMfunctions = list(
+  f1 = function(par, env) {
+    return(apply(1*(sapply(1:ncol(env), function(i) env[,i] > par[,i])),1, sum))
+  },
+  f2 = function(par, env) {
+    if(is.matrix(par)) {
+    maxDens = dnorm(par, mean = par, sd = 0.1)
+    pDens = lapply(1:nrow(par), function(j) {sapply(1:ncol(env), function(i) dnorm(env[,i,drop=FALSE], mean = par[j,i], sd = 0.1))})
+    pDens = abind::abind(pDens, along = 0L)
+    return(apply(pDens/maxDens, 1, sum))
+    } else {
+      maxDens = dnorm(par, mean = par, sd = 0.1)
+      pDens =  dnorm(env, mean = par, sd = 0.1)
+      return(pDens/maxDens)
+    }
   }
-  
-  for(t in 1:timesteps){
-    LAI = lai_f(cohorts, pars)
-    tDist = rbinom(1,1,pars[["distP"]])
-    # env = weather()
-    env = speciesPars[spID == 9]$kDDMin/1100
-    cohorts = regeneration_f(cohorts, LAI, env, pars)
-    cohorts = growth_f(cohorts, LAI = LAI, env = env, pars)
-    cohorts = mortality_f(cohorts, LAI = LAI, env = env, tDist = tDist, pars)
-    #cohorts = growth_f(cohorts, LAI[t], env[t])
-    points(t,sum(sapply(cohorts, function(x) x$nTrs)))
-    #cohorts = mortality_f(cohorts, LAI[t], env[t], pars)
-    cohorts_dt <- data.table(matrix(unlist(cohorts), ncol = length(cohorts[[1]]), byrow = T))
-    colnames(cohorts_dt) <- names(cohorts[[1]])
-    out = rbind(out, data.table(cohorts_dt, t = t))
+)
+
+stateF = list(
+  height = function(cohortMat, par) {
+    return(exp((cohortMat[,2]*par)*0.03)) # speciesPars[cohortMat[,4],4]
+  },
+  # HeightClass = function(cohortMat) {
+  #   height = stateF$height(cohortMat)
+  #   heightIntervals = createHeightIntervals(height)
+  #   return(sapply(height, function(i) sum(i > heightIntervals)))
+  # },
+  BA = function(cohortMat) {
+    return(pi*(cohortMat[,2]/100/2)**2)
   }
-  return(out)
+)
+
+compF = function(cohortMat, minLight = 50, height) {
+  BA = stateF$BA(cohortMat)/0.1
+  height = sapply(height, function(i ) sum(height[height > i]))
+  BA_height = height
+  AL = 1-BA_height/minLight
+  AL[AL < 0] = 0
+  AL = AL/max(AL)
+  return(AL)
 }
 
+parGlobal = matrix(runif(5), 5, 1) 
+
+parReg = matrix(runif(5*3), 5, 3)
+regF = function(cohortMat, timestep, parReg) {
+  AL = compF(cohortMat, height = 0)
+  regP = 1*(AL >abs( parReg[,1] ))
+  environment = envMfunctions$f2( par = parReg[,2:3], env = envM[timestep,,drop=FALSE])
+  regeneration = rpois(nrow(speciesPars), exp(regP + environment))
+  return(regeneration)
+}
+
+
+parMort = matrix(runif(5*4),5,4)
+parMort[,4] = runif(5, 250, 350)
+mortF = function(cohortMat, timestep, parMort) {
+  # shade
+  AL = compF(cohortMat, height = stateF$height(cohortMat, parGlobal[cohortMat[,4],1]))
+  Shade = envMfunctions$f2(par = parMort[cohortMat[,4],1], env = AL)
+  
+  # Umwelt
+  environment = envMfunctions$f2(env = envM[timestep,,drop=FALSE], par = parMort[cohortMat[,4],2:3])
+  
+  # size
+  gPSize = 0.1*(cohortMat[,2]/parMort[cohortMat[,4],4])^2.3
+  mortP = sapply(gPSize+Shade+environment, function(x) min(c(x, 1)))
+
+  return(rbinom(nrow(cohortMat), cohortMat[,3] , mortP))
+}
+
+parGrowth = matrix(runif(5*4), 5, 4)
+# last parameter % of maximal Growth
+growthF = function(cohortMat, timestep, parGrowth) {
+  # Shade
+  AL = compF(cohortMat, height = stateF$height(cohortMat, parGlobal[cohortMat[,4],1]))
+  shade = envMfunctions$f2(env =  AL, par = parGrowth[cohortMat[,4], 1])
+  # Environment
+  environment = envMfunctions$f2(env = envM[timestep,,drop=FALSE], par = parGrowth[cohortMat[,4],2:3])
+  growth = (1-(1-environment+shade)^4) * parGrowth[cohortMat[,4], 4]
+  growth = sapply(growth, function(x) max(c(x, 0)))
+  return(growth)
+}
+
+
+runModel = function(speciesPars, 
+                     envM, 
+                     envMfunctions = NULL, 
+                     cohortMat, 
+                     compF = NULL, 
+                     stateF = NULL,
+                     timesteps = 100) {
+  
+  old = cohortMat
+  cohortMat = old
+  for(tstep in 1:timesteps) {
+    g = growthF(cohortMat, tstep, parGrowth)
+    cohortMat[,2] = cohortMat[,2] + g
+    m = mortF(cohortMat, tstep, parMort)
+    cohortMat[,3] = cohortMat[,3] - m
+    cohortMat = cohortMat[cohortMat[,3] > 0,]
+    r = regF(cohortMat, tstep, parReg)
+    if(length(r) > 0) {
+    newCohortMat = data.frame(ID=NA, 
+                         dbh = 1, 
+                         nTree = r[r>0], 
+                         Species = which(r>0, arr.ind = TRUE))
+    cohortMat = rbind(cohortMat, newCohortMat)
+
+    }
+  }
+  
+}
