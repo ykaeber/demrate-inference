@@ -13,7 +13,7 @@ envMfunctions = list(
     } else {
       maxDens = dnorm(par, mean = par, sd = 0.1)
       pDens =  dnorm(env, mean = par, sd = 0.1)
-      return(pDens/maxDens)
+      return(sum(pDens/maxDens))
     }
   },
   f3 = function(par, env) {
@@ -46,7 +46,7 @@ regF = function(cohortMat, timestep, parReg) {
   AL = compF(cohortMat, height = 0)
   regP = 1*(AL >abs( parReg[,1] ))
   environment = envMfunctions$f2( par = parReg[,2:3], env = envM[timestep,,drop=FALSE])
-  regeneration = rpois(nrow(parReg), exp(regP + environment))
+  regeneration = rpois(nrow(parReg), 0.9*exp(regP + environment))# TODO add model parameter for 0.9
   return(regeneration)
 }
 
@@ -77,8 +77,6 @@ growthF = function(cohortMat, timestep, parGrowth) {
 }
 
 
-
-
 runModel = function(envM, 
                     envMfunctions = NULL,
                     cohortMat = NULL, 
@@ -97,13 +95,15 @@ runModel = function(envM,
   results[[1]] = cohortMat
   tstep=1
   for(tstep in 1:timesteps) {
-    g = growthF(cohortMat, tstep, parGrowth)
-    cohortMat[,2] = cohortMat[,2] + g
-    m = mortF(cohortMat, tstep, parMort)
-    cohortMat[,3] = cohortMat[,3] - m
-    cohortMat = cohortMat[cohortMat[,3] > 0,]
+    if(nrow(cohortMat) > 0){
+      g = growthF(cohortMat, tstep, parGrowth)
+      cohortMat[,2] = cohortMat[,2] + g
+      m = mortF(cohortMat, tstep, parMort)
+      cohortMat[,3] = cohortMat[,3] - m
+      cohortMat = cohortMat[cohortMat[,3] > 0,]
+    }
     r = regF(cohortMat, tstep, parReg)
-    if(length(r) > 0) {
+    if(length(r) > 0 & sum(r) > 0) {
       newCohortMat = data.frame(ID=NA, 
                                 dbh = 1, 
                                 nTree = r[r>0], 
@@ -163,6 +163,7 @@ Nspecies = 4
 # species5 Abies alba
 
 species_dt = data.table(
+  names = c("Fagus sylvatica", "Picea abies", "Acer pseudoplatanus", "Betula pendula", "Abies alba"),
   dbh2height = c(0.6,0.6,0.6,0.6,0.6),
   Light = c(0.1,0.15,0.3,0.4,0.07),
   Temp = c(0.6,0.3,0.7,0.4,0.3),
@@ -171,7 +172,6 @@ species_dt = data.table(
   maxG = c(3,5,7,8,4)
 )
 
-envM = matrix(c(rnorm(500, 0.3, 0.1),rnorm(500,0.55,0.1)), 500, 2)
 
 # dbh height relationship
 parGlobal = matrix(species_dt$dbh2height,ncol = 1)
@@ -184,28 +184,42 @@ cohortMat = cbind(ID = 1:10,
                   nTree = rep(0, 10), 
                   Species = sample.int(5, 5, replace = TRUE))
 
-res2 = runModel(envM = envM, 
-               envMfunctions = envMfunctions, 
-               cohortMat = cohortMat,
-               compF = compF, 
-               stateF = stateF,
-               growthF = growthF,
-               mortF = mortF,
-               regF = regF,
-               parGlobal = parGlobal,
-               parReg = parReg,
-               parMort = parMort,
-               parGrowth = parGrowth, timesteps = 500)
+out_dt_all  <- data.table()
+time = system.time(
+  {
+    for(p in 1:50){
+      envM = matrix(c(rnorm(500, 0.6, 0.1),rnorm(500,0.55,0.1)), 500, 2)
+      
+      res2 = runModel(envM = envM, 
+                      envMfunctions = envMfunctions, 
+                      cohortMat = cohortMat,
+                      compF = compF, 
+                      stateF = stateF,
+                      growthF = growthF,
+                      mortF = mortF,
+                      regF = regF,
+                      parGlobal = parGlobal,
+                      parReg = parReg,
+                      parMort = parMort,
+                      parGrowth = parGrowth, timesteps = 500)
+      
+      out_l = lapply(1:length(res2[-1]), function(i) data.table(res2[-1][[i]], timestep = i))
+      out_dt = rbindlist(out_l)
+      out_dt$patch = p
+      out_dt_all = rbind(out_dt_all, out_dt)
+    }
+  })
+time
 
-out_l = lapply(1:length(res2[-1]), function(i) data.table(res2[-1][[i]], timestep = i))
-out_dt = rbindlist(out_l)
 circle_area <- function(d) pi * (d/100 / 2)^2
-out_dt[,ba := (circle_area(dbh)*nTree)/0.1,]
+out_dt_all[,ba := (circle_area(dbh)*nTree)/0.1,]
+out_dt_all[,SpeciesName := factor(Species, levels = 1:5, labels = species_dt$names),]
+out_dt_all2 <- out_dt_all[,.(ba = sum(ba)), by = .(timestep,SpeciesName,patch)]
 
-ggplot(out_dt[,.(ba = sum(ba)), by = .(timestep,Species)], aes(x = timestep, y = ba, color = factor(Species)))+
+ggplot(out_dt_all2[,.(ba = mean(ba)), by = .(timestep,SpeciesName)], aes(x = timestep, y = ba, color = SpeciesName))+
   geom_line()
 
-out_dt[,.(ba = sum(ba)), by = .(timestep,Species)][
-  ,.(ba = mean(ba)), by = .(Species)
-]
+ggplot(out_dt_all[patch == 1,.(timestep,SpeciesName,dbh)], aes(x = cut(timestep, breaks = 10), y = dbh, color = SpeciesName))+
+  geom_boxplot()
 
+View(out_dt_all[patch == 1,.(timestep,SpeciesName,dbh)])
