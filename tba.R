@@ -41,7 +41,7 @@ regF = function(cohortMat, timestep, parReg) {
   AL = compF(cohortMat, height = 0)
   regP = 1*(AL >abs( parReg[,1] ))
   environment = envMfunctions$f2( par = parReg[,2:3], env = envM[timestep,,drop=FALSE])
-  regeneration = rpois(nrow(speciesPars), exp(regP + environment))
+  regeneration = rpois(nrow(parReg), exp(regP + environment))
   return(regeneration)
 }
 
@@ -71,29 +71,20 @@ growthF = function(cohortMat, timestep, parGrowth) {
 }
 
 
-## envM
-# matrix, row = Zeit, columns = Predictors
-envM = matrix(rnorm(500*2), 500, 2)
 
-# Parameter
-parGlobal = matrix(runif(5), 5, 1) 
-parReg = matrix(runif(5*3), 5, 3)
-parMort = matrix(runif(5*4),5,4)
-parMort[,4] = runif(5, 250, 350)
-parGrowth = matrix(runif(5*4, 0, 7), 5, 4)
 
 runModel = function(envM, 
                     envMfunctions = NULL,
-                    cohortMat, 
-                    compF = compF, 
-                    stateF = stateF,
-                    growthF = growthF,
-                    mortF = mortF,
-                    regF = regF,
-                    parGlobal = parGlobal,
-                    parReg = parReg,
-                    parMort = parMort,
-                    parGrowth = parGrowth,
+                    cohortMat = NULL, 
+                    compF = NULL,
+                    stateF = NULL,
+                    growthF = NULL,
+                    mortF = NULL,
+                    regF = NULL,
+                    parGlobal = NULL,
+                    parReg = NULL,
+                    parMort = NULL,
+                    parGrowth = NULL,
                     timesteps = 100) {
   
   results = vector("list", timesteps+1)
@@ -121,6 +112,33 @@ cohortMat = cbind(ID = 1:10,
                   dbh = runif(10, 30, 100), 
                   nTree = rpois(10, 10), 
                   Species = sample.int(5, 5, replace = TRUE))
-res = runModel(envM = envM, envMfunctions = envMfunctions, cohortMat = cohortMat)
+
+## envM
+# matrix, row = Zeit, columns = Predictors
+envM = matrix(rnorm(500*2), 500, 2)
+
+# Parameter
+parGlobal = matrix(runif(5), 5, 1) 
+parReg = matrix(runif(5*3,0, 3), 5, 3)
+parMort = matrix(runif(5*4),5,4)
+parMort[,4] = runif(5, 250, 350)
+parGrowth = matrix(runif(5*4, 0, 7), 5, 4)
+
+
+res = runModel(envM = envM, 
+               envMfunctions = envMfunctions, 
+               cohortMat = cohortMat,
+               compF = compF, 
+               stateF = stateF,
+               growthF = growthF,
+               mortF = mortF,
+               regF = regF,
+               parGlobal = parGlobal,
+               parReg = parReg,
+               parMort = parMort,
+               parGrowth = parGrowth, timesteps = 500L)
+library(tidyverse)
+RR = lapply(res, function(i) i %>% as.data.frame %>%  mutate(Species = as.character(Species) )%>%  group_by(Species) %>% summarise(dbh = sum(dbh)))
+plot(unlist(sapply(RR, function(r) r[r$Species == "2", 2])), type = "l")
 
 
