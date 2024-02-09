@@ -236,10 +236,98 @@ time = system.time(
       }
     }
   })
+
 time
 
 out_dt_all <- fread("evaluation2-obs.csv")
 env_out_all <- fread("evaluation2-env.csv")
+
+
+
+
+
+
+library(foreach)
+library(doParallel)
+library(data.table)
+
+# Setup parallel backend to use multiple cores
+no_cores <- detectCores() - 2  # Using one less than the total number of cores
+registerDoParallel(cores = no_cores)
+out_dt_all  <- data.table()
+
+Nsites = 1000
+Ntimesteps = 300
+Npatches = 100
+NsamplesPerEnv = ceiling(sqrt(Nsites))
+EnvSiteAvg = seq(0,1,length.out = NsamplesPerEnv)
+EnvSiteAvgM = expand.grid(list(EnvSiteAvg,EnvSiteAvg))
+cat("start at")
+Sys.time()
+
+envM_list = list()
+env_out_all  <- data.table()
+for(i_site in 1:Nsites){
+  envAvg1 = EnvSiteAvgM[i_site,1]
+  envAvg2 = EnvSiteAvgM[i_site,2]
+  envM = matrix(c(rnorm(Ntimesteps, envAvg1, 0.1), rnorm(Ntimesteps, envAvg2, 0.1)), Ntimesteps, 2)
+  envM[envM > 1] = 1
+  envM[envM < 0] = 0
+  envM_list[[i_site]] = envM
+  env_out = data.table(
+    timestep = 1:Ntimesteps,
+    site = i_site,
+    envAct1 = envM[,1],
+    envAct2 = envM[,2],
+    envAvg1 = envAvg1,
+    envAvg2 = envAvg2
+  )
+  env_out_all = rbind(env_out_all, env_out)
+}
+
+fwrite(data.table(site = 0),"log.csv")
+# Parallel execution
+results <- foreach(i_site = 1:Nsites, .combine='rbind', .packages=c("data.table"), 
+                   .export=c("Nsites", "Ntimesteps", "Npatches", "EnvSiteAvgM", "runModel", 
+                             "envMfunctions", "cohortMat", "compF", "stateF", "growthF", "mortF", 
+                             "regF", "parGlobal", "parReg", "parMort", "parGrowth")) %dopar% {
+                               envM = envM_list[[i_site]]
+                               out_dt_all_site = data.table()
+                               fwrite(data.table(site = i_site),"log.csv",append = T)
+                               for(p in 1:Npatches){
+                                 res2 = runModel(envM = envM, 
+                                                 envMfunctions = envMfunctions, 
+                                                 cohortMat = cohortMat,
+                                                 compF = compF, 
+                                                 stateF = stateF,
+                                                 growthF = growthF,
+                                                 mortF = mortF,
+                                                 regF = regF,
+                                                 parGlobal = parGlobal,
+                                                 parReg = parReg,
+                                                 parMort = parMort,
+                                                 parGrowth = parGrowth, timesteps = Ntimesteps)
+                                 
+                                 out_l = lapply(1:length(res2[-1]), function(i) data.table(res2[-1][[i]], timestep = i))
+                                 out_dt = rbindlist(out_l)
+                                 out_dt[, ":="(patch = p, site = i_site)]
+                                 out_dt$dbh = round(out_dt$dbh,2)
+                                 out_dt_all_site = rbind(out_dt_all_site, out_dt)
+                               }
+                               fwrite(data.table(site = i_site),"log.csv",append = T)
+                               data.frame(out_dt_all_site)
+                             }
+
+# Clean up the parallel backend
+stopImplicitCluster()
+
+out_dt_all = data.table(results)
+
+fwrite(env_out_all, file = "evaluation1000-env.csv", append = FALSE)
+fwrite(out_dt_all, file = "evaluation1000-obs.csv", append = FALSE)
+
+
+
 
 out_dt_all <- merge(out_dt_all, env_out_all, by = c("site", "timestep"))
 
